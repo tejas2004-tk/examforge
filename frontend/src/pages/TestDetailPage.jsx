@@ -81,24 +81,24 @@ export function TestDetailPage({ backTo = '/teacher/tests' }) {
 
       <div className="mb-6 flex flex-wrap items-center gap-4">
         <Badge tone={statusTone(test.status)}>{test.status}</Badge>
-        {test.maxAttempts && <span className="text-sm text-slate-600">Max attempts: {test.maxAttempts}</span>}
-        {test.negativeMarks > 0 && <span className="text-sm text-slate-600">Negative marking: {test.negativeMarks}</span>}
-        {test.shuffleQuestions && <span className="text-sm text-slate-600">Shuffled order</span>}
-        {test.startAt && <span className="text-sm text-slate-600">Opens {new Date(test.startAt).toLocaleString()}</span>}
-        {test.endAt && <span className="text-sm text-slate-600">Closes {new Date(test.endAt).toLocaleString()}</span>}
+        {test.maxAttempts && <span className="text-sm text-ink-muted">Max attempts: {test.maxAttempts}</span>}
+        {test.negativeMarks > 0 && <span className="text-sm text-ink-muted">Negative marking: {test.negativeMarks}</span>}
+        {test.shuffleQuestions && <span className="text-sm text-ink-muted">Shuffled order</span>}
+        {test.startAt && <span className="text-sm text-ink-muted">Opens {new Date(test.startAt).toLocaleString()}</span>}
+        {test.endAt && <span className="text-sm text-ink-muted">Closes {new Date(test.endAt).toLocaleString()}</span>}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Questions ({test.questions?.length ?? 0})</h2>
-          <ul className="divide-y divide-slate-100">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-muted">Questions ({test.questions?.length ?? 0})</h2>
+          <ul className="divide-y divide-line">
             {test.questions?.map((q, i) => (
               <li key={q.id} className="flex items-center justify-between gap-2 py-2.5">
-                <p className="text-sm text-slate-800">
-                  <span className="mr-2 font-semibold text-slate-400">{i + 1}.</span>
+                <p className="text-sm text-ink">
+                  <span className="mr-2 font-semibold text-ink-subtle">{i + 1}.</span>
                   {q.text}
                 </p>
-                <span className="shrink-0 text-xs text-slate-400">{q.type} · {q.marks} pts</span>
+                <span className="shrink-0 text-xs text-ink-subtle">{q.type} · {q.marks} pts</span>
               </li>
             ))}
           </ul>
@@ -106,7 +106,7 @@ export function TestDetailPage({ backTo = '/teacher/tests' }) {
 
         <div className="card">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
               Assigned students ({test.assignments?.length ?? 0})
             </h2>
             {test.status !== 'DRAFT' && (
@@ -114,17 +114,17 @@ export function TestDetailPage({ backTo = '/teacher/tests' }) {
             )}
           </div>
           {test.status === 'DRAFT' && (
-            <p className="mb-3 text-sm text-amber-700">Publish the test before assigning students.</p>
+            <p className="mb-3 text-sm text-caution-ink">Publish the test before assigning students.</p>
           )}
           {test.assignments?.length === 0 ? (
-            <p className="text-sm text-slate-500">No students assigned yet.</p>
+            <p className="text-sm text-ink-muted">No students assigned yet.</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-line">
               {test.assignments?.map((a) => (
                 <li key={a.studentId} className="flex items-center justify-between py-2.5">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">{a.student.fullName ?? a.student.email}</p>
-                    <p className="text-xs text-slate-500">{a.student.email}</p>
+                    <p className="text-sm font-medium text-ink">{a.student.fullName ?? a.student.email}</p>
+                    <p className="text-xs text-ink-muted">{a.student.email}</p>
                   </div>
                   {assignedIds.has(a.studentId) && <Badge tone="green">Assigned</Badge>}
                 </li>
@@ -139,20 +139,20 @@ export function TestDetailPage({ backTo = '/teacher/tests' }) {
           <Field label="Search students">
             <input className="input" placeholder="Name or email…" value={search} onChange={(e) => searchStudents(e.target.value)} />
           </Field>
-          <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-            {studentOptions.length === 0 && <p className="px-2 py-1 text-sm text-slate-400">No students found.</p>}
+          <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+            {studentOptions.length === 0 && <p className="px-2 py-1 text-sm text-ink-subtle">No students found.</p>}
             {studentOptions.map((s) => (
-              <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+              <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-canvas">
                 <input
                   type="checkbox"
                   checked={selected.includes(s.id)}
                   onChange={(e) =>
                     setSelected((cur) => (e.target.checked ? [...cur, s.id] : cur.filter((id) => id !== s.id)))
                   }
-                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                  className="h-4 w-4 rounded border-line-strong text-accent"
                 />
                 <span>{s.fullName ?? s.email}</span>
-                <span className="ml-auto text-xs text-slate-400">{s.email}</span>
+                <span className="ml-auto text-xs text-ink-subtle">{s.email}</span>
               </label>
             ))}
           </div>

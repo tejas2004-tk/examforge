@@ -218,20 +218,20 @@ export function ExamPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="sticky top-0 z-10 -mx-8 mb-6 border-b border-slate-200 bg-slate-100/95 px-8 py-3 backdrop-blur">
+      <div className="sticky top-0 z-10 -mx-8 mb-6 border-b border-line bg-canvas/95 px-8 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-base font-semibold text-slate-900">{attempt.test.title}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-base font-semibold text-ink">{attempt.test.title}</p>
+            <p className="text-xs text-ink-muted">
               {questions.length} questions · {attempt.test.totalMarks} marks · Pass {attempt.test.passingMarks}
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500">{answeredCount}/{questions.length} answered</span>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-ink-muted">{answeredCount}/{questions.length} answered</span>
+            <span className="text-xs text-ink-subtle">
               {saveState === 'saving' ? 'Saving…' : saveState === 'pending' ? 'Unsaved' : saveState === 'saved' ? 'Saved' : ''}
             </span>
-            <span className={`rounded-lg px-3 py-1 font-mono text-sm font-bold tabular-nums ${remaining < 60 ? 'bg-red-100 text-red-700' : 'bg-white text-slate-900'}`}>
+            <span className={`rounded-lg px-3 py-1 font-mono text-sm font-bold tabular-nums ${remaining < 60 ? 'bg-critical-soft text-critical-ink' : 'bg-surface text-ink'}`}>
               {mm}:{ss}
             </span>
             <button onClick={handleSubmitClick} disabled={submitting} className="btn-primary px-3 py-1.5">
@@ -245,15 +245,15 @@ export function ExamPage() {
         {questions.map(({ orderIndex, question: q }) => (
           <div key={q.id} className="card">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-medium text-slate-900">
-                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+              <p className="text-sm font-medium text-ink">
+                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-canvas text-xs font-bold text-ink-muted">
                   {orderIndex + 1}
                 </span>
                 {q.text}
               </p>
               <div className="shrink-0 text-right">
-                <p className="text-xs font-semibold text-slate-700">{q.marks} pts</p>
-                {q.negativeMarks > 0 && <p className="text-xs text-red-500">-{q.negativeMarks} wrong</p>}
+                <p className="text-xs font-semibold text-ink">{q.marks} pts</p>
+                {q.negativeMarks > 0 && <p className="text-xs text-critical">-{q.negativeMarks} wrong</p>}
               </div>
             </div>
 
@@ -285,11 +285,11 @@ export function ExamPage() {
                       type="button"
                       onClick={() => toggleOption(q, opt)}
                       className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                        selected ? 'border-brand-500 bg-brand-50 text-brand-900' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        selected ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-surface text-ink hover:bg-canvas'
                       }`}
                     >
-                      <span className={`inline-flex h-4 w-4 items-center justify-center border ${q.type === 'MULTIPLE' ? 'rounded' : 'rounded-full'} ${selected ? 'border-brand-500 bg-brand-500' : 'border-slate-300'}`}>
-                        {selected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      <span className={`inline-flex h-4 w-4 items-center justify-center border ${q.type === 'MULTIPLE' ? 'rounded' : 'rounded-full'} ${selected ? 'border-accent bg-accent' : 'border-line-strong'}`}>
+                        {selected && <span className="h-1.5 w-1.5 rounded-full bg-surface" />}
                       </span>
                       {opt.text}
                     </button>

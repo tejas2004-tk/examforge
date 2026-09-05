@@ -35,7 +35,7 @@ export function AdminAuditPage() {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="pb-3 pr-4 font-medium">Action</th>
                 <th className="pb-3 pr-4 font-medium">Entity</th>
                 <th className="pb-3 pr-4 font-medium">Entity ID</th>
@@ -44,15 +44,15 @@ export function AdminAuditPage() {
                 <th className="pb-3 pr-4 font-medium">Time</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {data.items.map((log) => (
                 <tr key={log.id}>
                   <td className="py-3 pr-4"><Badge tone="blue">{log.action}</Badge></td>
-                  <td className="py-3 pr-4 text-slate-600">{log.entity}</td>
-                  <td className="py-3 pr-4 font-mono text-xs text-slate-500">{log.entityId?.slice(0, 12) ?? '—'}</td>
-                  <td className="py-3 pr-4 text-slate-600">{log.user?.fullName ?? log.user?.email ?? 'System'}</td>
-                  <td className="py-3 pr-4 font-mono text-xs text-slate-500">{log.ip ?? '—'}</td>
-                  <td className="py-3 pr-4 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{log.entity}</td>
+                  <td className="py-3 pr-4 font-mono text-xs text-ink-muted">{log.entityId?.slice(0, 12) ?? '—'}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{log.user?.fullName ?? log.user?.email ?? 'System'}</td>
+                  <td className="py-3 pr-4 font-mono text-xs text-ink-muted">{log.ip ?? '—'}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{new Date(log.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -60,7 +60,7 @@ export function AdminAuditPage() {
 
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-ink-muted">
                 Page {data.page} of {totalPages} ({data.total} total)
               </p>
               <div className="flex gap-2">

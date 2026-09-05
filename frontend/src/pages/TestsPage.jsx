@@ -90,7 +90,7 @@ export function TestsPage({ basePath = '/teacher/tests' }) {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="pb-3 pr-4 font-medium">Title</th>
                 <th className="pb-3 pr-4 font-medium">Course</th>
                 <th className="pb-3 pr-4 font-medium">Status</th>
@@ -101,20 +101,20 @@ export function TestsPage({ basePath = '/teacher/tests' }) {
                 <th className="pb-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {items.map((t) => (
                 <tr key={t.id}>
                   <td className="max-w-[280px] py-3 pr-4">
-                    <p className="truncate font-medium text-slate-900">{t.title}</p>
+                    <p className="truncate font-medium text-ink">{t.title}</p>
                   </td>
-                  <td className="py-3 pr-4 text-slate-500">{t.course?.name ?? '—'}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{t.course?.name ?? '—'}</td>
                   <td className="py-3 pr-4"><Badge tone={statusTone(t.status)}>{t.status}</Badge></td>
-                  <td className="py-3 pr-4 text-slate-600">{t.durationMinutes} min</td>
-                  <td className="py-3 pr-4 text-slate-600">{t._count.testQuestions}</td>
-                  <td className="py-3 pr-4 font-semibold text-slate-900">{Number(t.totalMarks)}</td>
-                  <td className="py-3 pr-4 text-slate-600">{t.maxAttempts}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{t.durationMinutes} min</td>
+                  <td className="py-3 pr-4 text-ink-muted">{t._count.testQuestions}</td>
+                  <td className="py-3 pr-4 font-semibold text-ink">{Number(t.totalMarks)}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{t.maxAttempts}</td>
                   <td className="py-3 text-right">
-                    <Link to={`${basePath}/${t.id}`} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+                    <Link to={`${basePath}/${t.id}`} className="text-sm font-medium text-accent hover:text-accent">
                       Manage
                     </Link>
                   </td>
@@ -163,34 +163,34 @@ export function TestsPage({ basePath = '/teacher/tests' }) {
 
           <div>
             <label className="label">Questions ({form.questionIds.length} selected)</label>
-            <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-              {questions.length === 0 && <p className="px-2 py-1 text-sm text-slate-400">No questions available — create some first.</p>}
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+              {questions.length === 0 && <p className="px-2 py-1 text-sm text-ink-subtle">No questions available — create some first.</p>}
               {questions.map((q) => (
-                <label key={q.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+                <label key={q.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-canvas">
                   <input
                     type="checkbox"
                     checked={form.questionIds.includes(q.id)}
                     onChange={() => toggleQuestion(q.id)}
-                    className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                    className="h-4 w-4 rounded border-line-strong text-accent"
                   />
                   <span className="truncate">{q.text}</span>
-                  <span className="ml-auto shrink-0 text-xs text-slate-400">{q.type} · {q.marks} pts</span>
+                  <span className="ml-auto shrink-0 text-xs text-ink-subtle">{q.type} · {q.marks} pts</span>
                 </label>
               ))}
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} className="h-4 w-4 rounded border-slate-300 text-brand-600" />
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
               Shuffle order
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={form.randomOptionOrder} onChange={(e) => setForm({ ...form, randomOptionOrder: e.target.checked })} className="h-4 w-4 rounded border-slate-300 text-brand-600" />
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={form.randomOptionOrder} onChange={(e) => setForm({ ...form, randomOptionOrder: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
               Random option order
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={form.showResultImmediately} onChange={(e) => setForm({ ...form, showResultImmediately: e.target.checked })} className="h-4 w-4 rounded border-slate-300 text-brand-600" />
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={form.showResultImmediately} onChange={(e) => setForm({ ...form, showResultImmediately: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
               Show result immediately
             </label>
           </div>
