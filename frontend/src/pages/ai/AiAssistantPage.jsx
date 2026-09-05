@@ -1,0 +1,136 @@
+import { useEffect, useRef, useState } from 'react';
+import { api } from '../../api/client.js';
+import { ErrorAlert, Spinner } from '../../components/ui.jsx';
+
+export function AiAssistantPage() {
+  const [conversations, setConversations] = useState(null);
+  const [active, setActive] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const bottomRef = useRef(null);
+
+  const loadConversations = () =>
+    api.get('/ai/conversations')
+      .then((r) => setConversations(r.data.data.conversations))
+      .catch(setError);
+
+  useEffect(() => { loadConversations(); }, []);
+
+  useEffect(() => {
+    if (active) {
+      api.get(`/ai/conversations/${active.id}`)
+        .then((r) => setMessages(r.data.data.conversation.messages || []))
+        .catch(setError);
+    }
+  }, [active?.id]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const newConversation = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post('/ai/conversations', { title: 'New chat' });
+      await loadConversations();
+      setActive(data.data.conversation);
+      setMessages([]);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const send = async () => {
+    if (!input.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`/ai/conversations/${active.id}/messages`, { content: input });
+      const { data } = await api.get(`/ai/conversations/${active.id}`);
+      setMessages(data.data.conversation.messages || []);
+      setInput('');
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (error) return <ErrorAlert error={error} />;
+  if (!conversations) return <Spinner label="Loading AI assistant…" />;
+
+  return (
+    <div className="h-[calc(100vh-8rem)]">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">AI Study Assistant</h1>
+          <p className="mt-1 text-sm text-slate-500">Ask questions, clarify concepts, and get study help.</p>
+        </div>
+        <button onClick={newConversation} disabled={busy} className="btn btn-primary">New Chat</button>
+      </div>
+
+      <div className="grid h-[calc(100%-4rem)] grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
+        <div className="hidden space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 lg:block">
+          {conversations.length === 0 && <p className="p-2 text-sm text-slate-400">No conversations yet.</p>}
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActive(c)}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
+                active?.id === c.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <p className="line-clamp-1 font-medium">{c.title || 'Untitled'}</p>
+              <p className="text-xs text-slate-400">{new Date(c.updatedAt).toLocaleDateString()}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col rounded-xl border border-slate-200 bg-white">
+          {!active ? (
+            <div className="flex flex-1 items-center justify-center">
+              <p className="p-8 text-center text-slate-400">
+                Start a new conversation to ask the AI study assistant a question.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                {messages.map((m) => (
+                  <div key={m.id} className={`flex ${m.role === 'student' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[75%] rounded-xl px-4 py-2 text-sm ${
+                        m.role === 'student' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{m.content}</p>
+                    </div>
+                  </div>
+                ))}
+                {busy && <div className="text-sm text-slate-400">Thinking…</div>}
+                <div ref={bottomRef} />
+              </div>
+              <div className="border-t border-slate-200 p-3">
+                <div className="flex gap-2">
+                  <input
+                    className="input"
+                    placeholder="Ask about a lesson, concept, or get exam tips…"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && send()}
+                  />
+                  <button onClick={send} disabled={busy || !input.trim()} className="btn btn-primary shrink-0">
+                    Send
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
