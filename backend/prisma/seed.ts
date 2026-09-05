@@ -1,3 +1,6 @@
+// The seed runs outside the app, so it loads .env itself rather than
+// inheriting DATABASE_URL from an already-booted process.
+import 'dotenv/config';
 import { PrismaClient, Role, QuestionType, Difficulty, TestStatus, ExamMode } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 

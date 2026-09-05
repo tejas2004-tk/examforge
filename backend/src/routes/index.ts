@@ -46,6 +46,11 @@ apiRouter.get('/tests/assigned', requireAuth, (req, res, next) => {
   listAssignedTests(req, res, next);
 });
 
+// Mounted before lmsRouter, which is prefix-less and applies requireAuth to
+// every route registered after it; probes must answer without a token.
+apiRouter.use('/health', healthRouter);
+apiRouter.use('/version', versionRouter);
+
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', userRouter);
 apiRouter.use('/courses', courseRouter);
@@ -71,9 +76,6 @@ apiRouter.use('/leaderboards', leaderboardRouter);
 apiRouter.use(attemptWriteLimiter, attemptRouter);
 apiRouter.use('/tests', testRouter);
 apiRouter.use('/results', resultRouter);
-
-apiRouter.use('/health', healthRouter);
-apiRouter.use('/version', versionRouter);
 
 // Prometheus metrics
 apiRouter.get('/metrics', metricsHandler);
