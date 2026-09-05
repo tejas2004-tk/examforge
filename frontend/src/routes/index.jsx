@@ -39,6 +39,9 @@ const CourseDetailPage = page(() => import('../pages/courses/CourseDetailPage.js
 const LessonPage = page(() => import('../pages/courses/LessonPage.jsx'), 'LessonPage');
 const MyCoursesPage = page(() => import('../pages/courses/MyCoursesPage.jsx'), 'MyCoursesPage');
 const UsersPage = page(() => import('../pages/UsersPage.jsx'), 'UsersPage');
+const AnalyticsPage = page(() => import('../pages/analytics/AnalyticsPage.jsx'), 'AnalyticsPage');
+const TestAnalyticsPage = page(() => import('../pages/analytics/TestAnalyticsPage.jsx'), 'TestAnalyticsPage');
+const StudentProgressPage = page(() => import('../pages/student/StudentProgressPage.jsx'), 'StudentProgressPage');
 const StudentDashboard = page(() => import('../pages/student/StudentDashboard.jsx'), 'StudentDashboard');
 const MyTests = page(() => import('../pages/student/MyTests.jsx'), 'MyTests');
 const ExamPage = page(() => import('../pages/student/ExamPage.jsx'), 'ExamPage');
@@ -108,6 +111,12 @@ export function AppRoutes() {
         <Route path="/search" element={guard(ALL_ROLES, <SearchResultsPage />)} />
         <Route path="/ai-assistant" element={guard(ALL_ROLES, <AiAssistantPage />)} />
 
+        <Route path="/analytics" element={guard(['ADMIN', 'TEACHER'], <AnalyticsPage />)} />
+        <Route
+          path="/analytics/tests/:testId"
+          element={guard(['ADMIN', 'TEACHER'], <TestAnalyticsPage />)}
+        />
+
         <Route path="/admin" element={guard(['ADMIN'], <AdminDashboard />)} />
         <Route path="/admin/users" element={guard(['ADMIN'], <UsersPage />)} />
         <Route path="/admin/courses" element={guard(['ADMIN'], <CoursesPage />)} />
@@ -145,6 +154,7 @@ export function AppRoutes() {
         <Route path="/student/assignments" element={guard(['STUDENT'], <StudentAssignmentsPage />)} />
         <Route path="/student/results" element={guard(['STUDENT'], <StudentResults />)} />
         <Route path="/student/results/:attemptId" element={guard(['STUDENT'], <StudentResultDetail />)} />
+        <Route path="/student/progress" element={guard(['STUDENT'], <StudentProgressPage />)} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

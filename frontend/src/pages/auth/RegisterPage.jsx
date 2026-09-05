@@ -2,73 +2,87 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { z } from 'zod';
 import { useAuthStore } from '../../store/authStore.js';
-import { ErrorAlert, Field } from '../../components/ui.jsx';
+import { Button, ErrorAlert, Field, Input } from '../../components/ui.jsx';
+import { PasswordInput, PasswordStrength, passwordScore } from '../../components/PasswordField.jsx';
 
 const registerSchema = z
   .object({
-    fullName: z.string().min(1, 'Full name is required').max(120, 'Full name is too long'),
+    fullName: z.string().trim().min(2, 'Enter your full name').max(120, 'That name is too long'),
     username: z
       .string()
-      .min(3, 'Username must be at least 3 characters')
+      .trim()
+      .min(3, 'At least 3 characters')
+      .max(32, 'At most 32 characters')
       .regex(/^[a-zA-Z0-9_]+$/, 'Letters, numbers and underscores only'),
     email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
+    password: z
+      .string()
+      .min(10, 'Use at least 10 characters')
+      .refine((value) => passwordScore(value) >= 3, 'Add a number, a symbol or mixed case'),
+    confirmPassword: z.string().min(1, 'Repeat the password'),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ['confirmPassword'],
-    message: 'Passwords do not match',
+    message: 'The two passwords do not match',
   });
 
 export function RegisterPage() {
-  const { register: registerUser } = useAuthStore();
+  const registerUser = useAuthStore((state) => state.register);
   const navigate = useNavigate();
   const [serverError, setServerError] = useState(null);
-  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
+    watch,
+    setError,
     formState: { errors, isSubmitting },
-  } = useForm({ resolver: zodResolver(registerSchema) });
+  } = useForm({ resolver: zodResolver(registerSchema), mode: 'onBlur' });
+
+  const password = watch('password') ?? '';
 
   const onSubmit = async (values) => {
     setServerError(null);
     try {
       await registerUser({
-        fullName: values.fullName,
-        username: values.username,
-        email: values.email,
+        fullName: values.fullName.trim(),
+        username: values.username.trim(),
+        email: values.email.trim(),
         password: values.password,
       });
-      // The confirmation is shown by the login page via router state; setting a
-      // local success message here could never render, since we navigate away
-      // in the same tick and this component unmounts.
-      navigate('/login', { state: { registered: true } });
-    } catch (err) {
-      setServerError(err.response?.data?.message ?? 'Registration failed. Please try again.');
+      navigate('/login', { state: { registered: true }, replace: true });
+    } catch (error) {
+      // A duplicate account is a field problem, not a page-level failure, so it
+      // is attached to the field the user has to change.
+      const message = error?.message ?? '';
+      if (error?.status === 409 || /already/i.test(message)) {
+        const field = /username/i.test(message) ? 'username' : 'email';
+        setError(field, { message: 'That is already registered.' });
+        return;
+      }
+      setServerError(error);
     }
   };
 
   return (
     <div>
-      <h1 className="text-display text-ink">Create an account</h1>
-      <p className="mt-1.5 text-sm text-ink-muted">Register as a student to get started.</p>
+      <h1 className="text-display text-ink">Create a student account</h1>
+      <p className="mt-1.5 text-sm text-ink-muted">
+        Teacher, proctor and administrator accounts are created by your institution.
+      </p>
 
       <form className="mt-7 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
         {serverError && <ErrorAlert error={serverError} />}
 
-        <Field label="Full name" htmlFor="fullName" error={errors.fullName?.message}>
-          <input
+        <Field label="Full name" htmlFor="fullName" required error={errors.fullName?.message}>
+          <Input
             id="fullName"
             autoComplete="name"
             autoFocus
-            className="input"
-            placeholder="Jane Doe"
-            aria-invalid={Boolean(errors.fullName)}
+            placeholder="As it should appear on certificates"
+            invalid={Boolean(errors.fullName)}
             {...register('fullName')}
           />
         </Field>
@@ -76,80 +90,67 @@ export function RegisterPage() {
         <Field
           label="Username"
           htmlFor="username"
+          required
           error={errors.username?.message}
-          hint="Letters, numbers and underscores only."
+          hint="Letters, numbers and underscores. This is visible to your teachers."
         >
-          <input
+          <Input
             id="username"
             autoComplete="username"
-            className="input"
             placeholder="jane_doe"
-            aria-invalid={Boolean(errors.username)}
+            invalid={Boolean(errors.username)}
             {...register('username')}
           />
         </Field>
 
-        <Field label="Email" htmlFor="email" error={errors.email?.message}>
-          <input
+        <Field
+          label="Email"
+          htmlFor="email"
+          required
+          error={errors.email?.message}
+          hint="Verification and result notifications go here."
+        >
+          <Input
             id="email"
             type="email"
             autoComplete="email"
-            className="input"
-            placeholder="you@example.com"
-            aria-invalid={Boolean(errors.email)}
+            placeholder="you@institution.edu"
+            invalid={Boolean(errors.email)}
             {...register('email')}
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Password"
-            htmlFor="password"
-            error={errors.password?.message}
-            hint={errors.password ? undefined : 'At least 8 characters.'}
-          >
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                className="input pr-10"
-                placeholder="••••••••"
-                aria-invalid={Boolean(errors.password)}
-                {...register('password')}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-canvas hover:text-ink-muted"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </Field>
+        <Field label="Password" htmlFor="password" required error={errors.password?.message}>
+          <PasswordInput
+            id="password"
+            autoComplete="new-password"
+            aria-invalid={Boolean(errors.password)}
+            {...register('password')}
+          />
+          <PasswordStrength value={password} />
+        </Field>
 
-          <Field label="Confirm password" htmlFor="confirmPassword" error={errors.confirmPassword?.message}>
-            <input
-              id="confirmPassword"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              className="input"
-              placeholder="••••••••"
-              aria-invalid={Boolean(errors.confirmPassword)}
-              {...register('confirmPassword')}
-            />
-          </Field>
-        </div>
+        <Field
+          label="Confirm password"
+          htmlFor="confirmPassword"
+          required
+          error={errors.confirmPassword?.message}
+        >
+          <PasswordInput
+            id="confirmPassword"
+            autoComplete="new-password"
+            aria-invalid={Boolean(errors.confirmPassword)}
+            {...register('confirmPassword')}
+          />
+        </Field>
 
-        <button type="submit" disabled={isSubmitting} className="btn-primary btn-lg w-full">
-          {isSubmitting && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {isSubmitting ? 'Creating account…' : 'Create account'}
-        </button>
+        <Button type="submit" variant="primary" size="lg" className="w-full" loading={isSubmitting}>
+          Create account
+        </Button>
       </form>
 
-      <p className="mt-7 text-center text-sm text-ink-muted">
-        Already have an account?{' '}
+      <p className="mt-7 text-sm text-ink-muted">
+        Already registered?{' '}
         <Link to="/login" className="link">
           Sign in
         </Link>

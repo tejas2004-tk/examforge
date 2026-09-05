@@ -1,154 +1,218 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, CircleCheck } from 'lucide-react';
 import { z } from 'zod';
-import { roleHome } from '../../routes/index.jsx';
+import { roleHome } from '../../routes/paths.js';
 import { useAuthStore } from '../../store/authStore.js';
-import { ErrorAlert, Field } from '../../components/ui.jsx';
+import { Button, ErrorAlert, Field, Input } from '../../components/ui.jsx';
+import { PasswordInput } from '../../components/PasswordField.jsx';
 
 const loginSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
+const codeSchema = z.object({
+  code: z
+    .string()
+    .min(6, 'Enter all six digits')
+    .max(6, 'The code is six digits')
+    .regex(/^\d{6}$/, 'The code is six digits'),
+});
+
 export function LoginPage() {
-  const { login } = useAuthStore();
+  const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
   const location = useLocation();
+
   const [serverError, setServerError] = useState(null);
-  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [stage, setStage] = useState('credentials');
+  const credentialsRef = useRef(null);
 
-  const {
-    register,
-    handleSubmit,
-    getValues,
-    formState: { errors, isSubmitting },
-  } = useForm({ resolver: zodResolver(loginSchema) });
+  const justRegistered = location.state?.registered === true;
+  const sessionExpired = location.state?.expired === true;
 
+  const credentialsForm = useForm({ resolver: zodResolver(loginSchema) });
+  const codeForm = useForm({ resolver: zodResolver(codeSchema), defaultValues: { code: '' } });
+
+  // Someone who is already signed in has no business on this screen.
   useEffect(() => {
     const role = useAuthStore.getState().user?.role;
     if (role) navigate(roleHome[role] ?? '/', { replace: true });
   }, [navigate]);
 
-  const doLogin = async (values, code) => {
+  const finish = (user) => {
+    const destination = location.state?.from ?? roleHome[user.role] ?? '/';
+    navigate(destination, { replace: true });
+  };
+
+  const submitCredentials = async (values) => {
     setServerError(null);
+    credentialsRef.current = values;
     try {
-      const user = await login(values.email, values.password, code);
-      const destination = location.state?.from ?? roleHome[user.role] ?? '/';
-      navigate(destination, { replace: true });
-    } catch (err) {
-      if (err.response?.status === 428) {
-        setTwoFactorRequired(true);
+      finish(await login(values.email, values.password));
+    } catch (error) {
+      if (error.status === 428) {
+        setStage('twoFactor');
         return;
       }
-      if (err.response?.status === 429) {
-        setServerError('Too many sign-in attempts. Please wait a few minutes and try again.');
+      if (error.status === 429) {
+        setServerError('Too many sign-in attempts. Wait a few minutes before trying again.');
         return;
       }
-      setServerError(err.response?.data?.message ?? 'Login failed. Please try again.');
+      setServerError(error.status === 401 ? 'Email or password is incorrect.' : error);
     }
   };
 
-  const onSubmit = async (values) => {
-    if (twoFactorRequired) {
-      await doLogin(getValues(), twoFactorCode);
+  const submitCode = async ({ code }) => {
+    setServerError(null);
+    const credentials = credentialsRef.current;
+    if (!credentials) {
+      setStage('credentials');
       return;
     }
-    await doLogin(values);
+    try {
+      finish(await login(credentials.email, credentials.password, code));
+    } catch (error) {
+      if (error.status === 401 || error.status === 428) {
+        codeForm.setError('code', { message: 'That code was not accepted. Try the current one.' });
+        return;
+      }
+      setServerError(error);
+    }
   };
 
-  return (
-    <div>
-      <h1 className="text-display text-ink">
-        {twoFactorRequired ? 'Two-factor verification' : 'Sign in'}
-      </h1>
-      <p className="mt-1.5 text-sm text-ink-muted">
-        {twoFactorRequired
-          ? 'Enter the six-digit code from your authenticator app.'
-          : 'Use your ExamForge account to continue.'}
-      </p>
+  if (stage === 'twoFactor') {
+    return (
+      <div>
+        <h1 className="text-display text-ink">Two-factor verification</h1>
+        <p className="mt-1.5 text-sm text-ink-muted">
+          Enter the six-digit code from your authenticator app for{' '}
+          <span className="font-medium text-ink">{credentialsRef.current?.email}</span>.
+        </p>
 
-      <form className="mt-7 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-        {serverError && <ErrorAlert error={serverError} />}
+        <form className="mt-7 space-y-4" onSubmit={codeForm.handleSubmit(submitCode)} noValidate>
+          {serverError && <ErrorAlert error={serverError} />}
 
-        <Field label="Email" htmlFor="email" error={errors.email?.message}>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            autoFocus={!twoFactorRequired}
-            className="input"
-            placeholder="you@example.com"
-            aria-invalid={Boolean(errors.email)}
-            {...register('email')}
-          />
-        </Field>
-
-        <Field label="Password" htmlFor="password" error={errors.password?.message}>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              className="input pr-10"
-              placeholder="••••••••"
-              aria-invalid={Boolean(errors.password)}
-              {...register('password')}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-canvas hover:text-ink-muted"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-        </Field>
-
-        {twoFactorRequired && (
           <Field
             label="Authentication code"
-            htmlFor="twoFactorCode"
-            hint="Six digits from your authenticator app."
+            htmlFor="code"
+            error={codeForm.formState.errors.code?.message}
+            hint="Codes rotate every 30 seconds."
           >
-            <input
-              id="twoFactorCode"
-              type="text"
+            <Input
+              id="code"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
               autoFocus
-              className="input text-center text-lg font-semibold tracking-[0.4em]"
+              className="text-center text-lg font-semibold tracking-[0.5em]"
               placeholder="000000"
-              value={twoFactorCode}
-              onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
+              invalid={Boolean(codeForm.formState.errors.code)}
+              {...codeForm.register('code')}
             />
           </Field>
-        )}
 
-        {!twoFactorRequired && (
-          <div className="flex justify-end">
-            <Link to="/forgot-password" className="link text-[0.8125rem]">
-              Forgot password?
-            </Link>
-          </div>
-        )}
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            className="w-full"
+            loading={codeForm.formState.isSubmitting}
+          >
+            Verify and sign in
+          </Button>
+        </form>
 
-        <button type="submit" disabled={isSubmitting} className="btn-primary btn-lg w-full">
-          {isSubmitting && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {isSubmitting ? 'Signing in…' : twoFactorRequired ? 'Verify and sign in' : 'Sign in'}
+        <button
+          type="button"
+          onClick={() => {
+            setStage('credentials');
+            setServerError(null);
+            codeForm.reset();
+          }}
+          className="link mt-6 inline-flex items-center gap-1.5 text-[0.8125rem]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Use a different account
         </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1 className="text-display text-ink">Sign in</h1>
+      <p className="mt-1.5 text-sm text-ink-muted">Use the account issued by your institution.</p>
+
+      {justRegistered && (
+        <p className="mt-5 flex items-start gap-2 rounded-md border border-positive/30 bg-positive-soft px-3 py-2.5 text-sm text-positive-ink">
+          <CircleCheck className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
+          Account created. Check your inbox for the verification link, then sign in.
+        </p>
+      )}
+      {sessionExpired && (
+        <p className="mt-5 rounded-md border border-caution/30 bg-caution-soft px-3 py-2.5 text-sm text-caution-ink">
+          Your session expired. Sign in again to continue where you left off.
+        </p>
+      )}
+
+      <form
+        className="mt-7 space-y-4"
+        onSubmit={credentialsForm.handleSubmit(submitCredentials)}
+        noValidate
+      >
+        {serverError && <ErrorAlert error={serverError} />}
+
+        <Field label="Email" htmlFor="email" error={credentialsForm.formState.errors.email?.message}>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            placeholder="you@institution.edu"
+            invalid={Boolean(credentialsForm.formState.errors.email)}
+            {...credentialsForm.register('email')}
+          />
+        </Field>
+
+        <Field
+          label="Password"
+          htmlFor="password"
+          error={credentialsForm.formState.errors.password?.message}
+        >
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="Your password"
+            aria-invalid={Boolean(credentialsForm.formState.errors.password)}
+            {...credentialsForm.register('password')}
+          />
+        </Field>
+
+        <div className="flex justify-end">
+          <Link to="/forgot-password" className="link text-[0.8125rem]">
+            Forgot your password?
+          </Link>
+        </div>
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          loading={credentialsForm.formState.isSubmitting}
+        >
+          Sign in
+        </Button>
       </form>
 
-      <p className="mt-7 text-center text-sm text-ink-muted">
-        Don&apos;t have an account?{' '}
+      <p className="mt-7 text-sm text-ink-muted">
+        Studying here and have no account yet?{' '}
         <Link to="/register" className="link">
-          Create one
+          Register as a student
         </Link>
       </p>
     </div>

@@ -11,7 +11,7 @@ import * as testService from '../services/test.service.js';
 
 export const createTest = asyncHandler(async (req: Request, res: Response) => {
   const input = createTestSchema.parse(req.body);
-  const test = await testService.createTest(req.user!.id, input);
+  const test = await testService.createTest(req.user!.id, input, req.user!.role);
   res.status(201).json({ success: true, data: { test } });
 });
 
@@ -22,7 +22,7 @@ export const listTests = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getTest = asyncHandler(async (req: Request, res: Response) => {
-  const test = await testService.getTest(req.params.id);
+  const test = await testService.getTest(req.params.id, req.user!);
   res.json({ success: true, data: { test } });
 });
 
@@ -54,7 +54,7 @@ export const assignTest = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const listAssignedStudents = asyncHandler(async (req: Request, res: Response) => {
-  const students = await testService.listAssignedStudents(req.params.id);
+  const students = await testService.listAssignedStudents(req.params.id, req.user!);
   res.json({ success: true, data: { students } });
 });
 
