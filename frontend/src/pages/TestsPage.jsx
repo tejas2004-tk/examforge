@@ -1,206 +1,587 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { BarChart3, Copy, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../api/client.js';
-import { Badge, EmptyState, ErrorAlert, Field, Modal, PageHeader, Spinner, statusTone } from '../components/ui.jsx';
+import {
+  Badge,
+  Button,
+  Checkbox,
+  ConfirmDialog,
+  Drawer,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  Select,
+  SkeletonTable,
+  Table,
+  Textarea,
+  Toolbar,
+} from '../components/ui.jsx';
+import { useToast } from '../components/toast.jsx';
+import { formatDate, formatDateTime, formatNumber } from '../lib/format.js';
+import { Async } from './_shared/Async.jsx';
+import { getData, pageMeta, retryUnlessDenied } from './_shared/request.js';
+import { useDebounced, useUrlState } from './_shared/hooks.js';
+import { DIFFICULTIES, EXAM_MODES, TEST_STATUSES, difficultyTone, humanise } from './_shared/domain.js';
 
-const emptyTest = {
+const DEFAULTS = { page: 1, limit: 20, search: '', status: '' };
+
+const statusTone = (status) =>
+  ({ PUBLISHED: 'positive', DRAFT: 'caution', CLOSED: 'neutral' })[status] ?? 'neutral';
+
+/** `datetime-local` produces a value without a zone; the API wants full ISO. */
+const toIso = (value) => (value ? new Date(value).toISOString() : undefined);
+const toLocalInput = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
+
+const testSchema = z
+  .object({
+    title: z.string().min(1, 'Title is required').max(200),
+    description: z.string().max(5000).optional(),
+    courseId: z.string().optional(),
+    durationMinutes: z.coerce.number().int().min(1, 'At least one minute').max(1440),
+    passingMarks: z.coerce.number().min(0),
+    negativeMarks: z.coerce.number().min(0),
+    maxAttempts: z.coerce.number().int().min(1).max(10),
+    examMode: z.string().optional(),
+    gracePeriodMinutes: z.coerce.number().int().min(0).max(60),
+    shuffleQuestions: z.boolean(),
+    randomOptionOrder: z.boolean(),
+    showResultImmediately: z.boolean(),
+    password: z.string().max(100).optional(),
+    startAt: z.string().optional(),
+    endAt: z.string().optional(),
+    questionIds: z.array(z.string()).min(1, 'Select at least one question'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.startAt && data.endAt && new Date(data.endAt) <= new Date(data.startAt)) {
+      ctx.addIssue({ code: 'custom', path: ['endAt'], message: 'The window must close after it opens' });
+    }
+  });
+
+const blankTest = {
   title: '',
-  courseId: '',
   description: '',
-  durationMinutes: 30,
-  passingMarks: 0,
+  courseId: '',
+  durationMinutes: 60,
+  passingMarks: 40,
   negativeMarks: 0,
   maxAttempts: 1,
+  examMode: 'FINAL',
+  gracePeriodMinutes: 0,
   shuffleQuestions: false,
   randomOptionOrder: false,
   showResultImmediately: true,
+  password: '',
   startAt: '',
   endAt: '',
   questionIds: [],
 };
 
 export function TestsPage({ basePath = '/teacher/tests' }) {
-  const [items, setItems] = useState(null);
-  const [courses, setCourses] = useState([]);
-  const [questions, setQuestions] = useState([]);
-  const [error, setError] = useState(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState(emptyTest);
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState(null);
+  const [state, setState, resetFilters] = useUrlState(DEFAULTS);
+  const [searchDraft, setSearchDraft] = useState(state.search);
+  const debouncedSearch = useDebounced(searchDraft, 300);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorValues, setEditorValues] = useState(blankTest);
+  const [confirm, setConfirm] = useState(null);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const toast = useToast();
 
-  const load = () => Promise.all([
-    api.get('/tests').then((r) => setItems(r.data.data.items)),
-    api.get('/courses').then((r) => setCourses(r.data.data.items)),
-    api.get('/questions').then((r) => setQuestions(r.data.data.items)),
-  ]).catch(setError);
+  useEffect(() => {
+    if (debouncedSearch !== state.search) setState({ search: debouncedSearch });
+  }, [debouncedSearch, state.search, setState]);
 
-  useEffect(() => { load(); }, []);
+  const params = new URLSearchParams({ page: String(state.page), limit: String(state.limit) });
+  if (state.search) params.set('search', state.search);
+  if (state.status) params.set('status', state.status);
 
-  const openCreate = () => { setForm(emptyTest); setFormError(null); setCreateOpen(true); };
+  const query = useQuery({
+    queryKey: ['tests', params.toString()],
+    queryFn: () => getData(`/tests?${params.toString()}`),
+    retry: retryUnlessDenied,
+    placeholderData: (previous) => previous,
+  });
 
-  const toggleQuestion = (id) => {
-    const has = form.questionIds.includes(id);
-    setForm({ ...form, questionIds: has ? form.questionIds.filter((q) => q !== id) : [...form.questionIds, id] });
-  };
+  const create = useMutation({
+    mutationFn: (payload) => api.post('/tests', payload),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['tests'] });
+      setEditorOpen(false);
+      const test = response.data?.data?.test;
+      toast.success('Test created');
+      if (test?.id) navigate(`${basePath}/${test.id}`);
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
-  const create = async () => {
-    if (!form.title || form.questionIds.length === 0) {
-      setFormError('Add a title and at least one question');
-      return;
-    }
-    setBusy(true);
-    setFormError(null);
-    try {
-      const payload = {
-        ...form,
-        courseId: form.courseId || undefined,
-        startAt: form.startAt ? new Date(form.startAt).toISOString() : null,
-        endAt: form.endAt ? new Date(form.endAt).toISOString() : null,
-        durationMinutes: Number(form.durationMinutes),
-        passingMarks: Number(form.passingMarks),
-        negativeMarks: Number(form.negativeMarks),
-        maxAttempts: Number(form.maxAttempts),
-      };
-      const { data } = await api.post('/tests', payload);
-      setCreateOpen(false);
-      await load();
-      window.location.href = `${basePath}/${data.data.test.id}`;
-    } catch (err) {
-      setFormError(err?.response?.data?.message ?? 'Failed to create test');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const remove = useMutation({
+    mutationFn: (id) => api.delete(`/tests/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tests'] });
+      setConfirm(null);
+      toast.success('Test deleted');
+    },
+    onError: (error) => {
+      toast.error(error.message);
+      setConfirm(null);
+    },
+  });
 
-  if (error) return <ErrorAlert error={error} />;
-  if (!items) return <Spinner />;
+  const duplicate = useMutation({
+    mutationFn: async (id) => {
+      const source = (await getData(`/tests/${id}`)).test;
+      return api.post('/tests', {
+        title: `${source.title} (copy)`,
+        description: source.description ?? undefined,
+        courseId: source.courseId ?? undefined,
+        durationMinutes: source.durationMinutes,
+        totalMarks: source.totalMarks,
+        passingMarks: source.passingMarks,
+        negativeMarks: source.negativeMarks,
+        maxAttempts: source.maxAttempts,
+        shuffleQuestions: source.shuffleQuestions,
+        randomOptionOrder: source.randomOptionOrder,
+        showResultImmediately: source.showResultImmediately,
+        examMode: source.examMode ?? undefined,
+        gracePeriodMinutes: source.gracePeriodMinutes,
+        questionIds: source.questions.map((q) => q.id),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tests'] });
+      toast.success('Duplicated as a draft');
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const meta = pageMeta(query.data, state.limit);
+  const tests = query.data?.items ?? [];
+  const filtersActive = Boolean(state.search || state.status);
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
+        eyebrow="Assessment"
         title="Tests"
-        description="Build tests from your questions, publish them, and assign to students."
-        actions={<button onClick={openCreate} className="btn-primary">New test</button>}
+        description="Draft, publish and close assessments. Only draft tests can be edited."
+        actions={
+          <Button
+            icon={Plus}
+            onClick={() => {
+              setEditorValues(blankTest);
+              setEditorOpen(true);
+            }}
+          >
+            New test
+          </Button>
+        }
       />
 
-      {items.length === 0 ? (
-        <EmptyState title="No tests yet" action={<button onClick={openCreate} className="btn-primary">Create your first test</button>} />
-      ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-subtle">
-                <th className="pb-3 pr-4 font-medium">Title</th>
-                <th className="pb-3 pr-4 font-medium">Course</th>
-                <th className="pb-3 pr-4 font-medium">Status</th>
-                <th className="pb-3 pr-4 font-medium">Duration</th>
-                <th className="pb-3 pr-4 font-medium">Questions</th>
-                <th className="pb-3 pr-4 font-medium">Marks</th>
-                <th className="pb-3 pr-4 font-medium">Attempts</th>
-                <th className="pb-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {items.map((t) => (
-                <tr key={t.id}>
-                  <td className="max-w-[280px] py-3 pr-4">
-                    <p className="truncate font-medium text-ink">{t.title}</p>
-                  </td>
-                  <td className="py-3 pr-4 text-ink-muted">{t.course?.name ?? '—'}</td>
-                  <td className="py-3 pr-4"><Badge tone={statusTone(t.status)}>{t.status}</Badge></td>
-                  <td className="py-3 pr-4 text-ink-muted">{t.durationMinutes} min</td>
-                  <td className="py-3 pr-4 text-ink-muted">{t._count.testQuestions}</td>
-                  <td className="py-3 pr-4 font-semibold text-ink">{Number(t.totalMarks)}</td>
-                  <td className="py-3 pr-4 text-ink-muted">{t.maxAttempts}</td>
-                  <td className="py-3 text-right">
-                    <Link to={`${basePath}/${t.id}`} className="text-sm font-medium text-accent hover:text-accent">
-                      Manage
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Toolbar>
+        <SearchInput
+          aria-label="Search tests"
+          placeholder="Search by title"
+          value={searchDraft}
+          onChange={(e) => setSearchDraft(e.target.value)}
+          className="sm:w-72"
+        />
+        <Select aria-label="Status" value={state.status} onChange={(e) => setState({ status: e.target.value })}>
+          <option value="">All statuses</option>
+          {TEST_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {humanise(status)}
+            </option>
+          ))}
+        </Select>
+        {filtersActive && (
+          <Button
+            variant="ghost"
+            icon={X}
+            onClick={() => {
+              setSearchDraft('');
+              resetFilters();
+            }}
+          >
+            Clear
+          </Button>
+        )}
+      </Toolbar>
+
+      <Async query={query} skeleton={<SkeletonTable rows={8} cols={6} />}>
+        {() =>
+          tests.length === 0 ? (
+            <EmptyState
+              title={filtersActive ? 'No tests match these filters' : 'No tests yet'}
+              description={
+                filtersActive
+                  ? 'Try another status or clear the search.'
+                  : 'Build a test by picking questions, or generate one from a question bank.'
+              }
+              action={
+                filtersActive ? (
+                  <Button variant="secondary" onClick={resetFilters}>
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setEditorValues(blankTest);
+                      setEditorOpen(true);
+                    }}
+                  >
+                    New test
+                  </Button>
+                )
+              }
+            />
+          ) : (
+            <>
+              <Table
+                head={[
+                  { key: 'title', label: 'Test' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'window', label: 'Window' },
+                  { key: 'questions', label: 'Questions', align: 'right' },
+                  { key: 'attempts', label: 'Attempts', align: 'right' },
+                  { key: 'marks', label: 'Marks', align: 'right' },
+                  { key: 'actions', label: '', align: 'right' },
+                ]}
+              >
+                {tests.map((test) => (
+                  <tr key={test.id}>
+                    <td>
+                      <Link className="link font-medium" to={`${basePath}/${test.id}`}>
+                        {test.title}
+                      </Link>
+                      <p className="text-xs text-ink-muted">
+                        {test.course ? `${test.course.code} · ` : ''}
+                        {test.durationMinutes} min · {humanise(test.examMode ?? '')}
+                      </p>
+                    </td>
+                    <td>
+                      <Badge tone={statusTone(test.status)}>{humanise(test.status)}</Badge>
+                    </td>
+                    <td className="text-xs text-ink-muted">
+                      {test.startAt || test.endAt ? (
+                        <>
+                          <span className="block">{test.startAt ? formatDateTime(test.startAt) : 'Open now'}</span>
+                          <span className="block">{test.endAt ? `until ${formatDateTime(test.endAt)}` : 'no close date'}</span>
+                        </>
+                      ) : (
+                        'Always open'
+                      )}
+                    </td>
+                    <td className="tabular text-right">{formatNumber(test._count?.testQuestions ?? 0)}</td>
+                    <td className="tabular text-right">{formatNumber(test._count?.attempts ?? 0)}</td>
+                    <td className="tabular text-right">
+                      {formatNumber(Number(test.totalMarks))}
+                      <span className="text-ink-subtle"> / pass {formatNumber(Number(test.passingMarks))}</span>
+                    </td>
+                    <td className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={BarChart3}
+                          as={Link}
+                          to={`/analytics/tests/${test.id}`}
+                          aria-label={`Analytics for ${test.title}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Copy}
+                          aria-label={`Duplicate ${test.title}`}
+                          loading={duplicate.isPending && duplicate.variables === test.id}
+                          onClick={() => duplicate.mutate(test.id)}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Trash2}
+                          aria-label={`Delete ${test.title}`}
+                          onClick={() => setConfirm(test)}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </Table>
+
+              <Pagination
+                page={meta.page}
+                pageCount={meta.pageCount}
+                total={meta.total}
+                pageSize={meta.pageSize}
+                onPageChange={(page) => setState({ page })}
+                onPageSizeChange={(limit) => setState({ limit, page: 1 })}
+              />
+            </>
+          )
+        }
+      </Async>
+
+      {editorOpen && (
+        <TestEditor
+          initial={editorValues}
+          saving={create.isPending}
+          onClose={() => setEditorOpen(false)}
+          onSubmit={(values) =>
+            create.mutate({
+              title: values.title.trim(),
+              description: values.description?.trim() || undefined,
+              courseId: values.courseId || undefined,
+              durationMinutes: values.durationMinutes,
+              passingMarks: values.passingMarks,
+              negativeMarks: values.negativeMarks,
+              maxAttempts: values.maxAttempts,
+              examMode: values.examMode || undefined,
+              gracePeriodMinutes: values.gracePeriodMinutes,
+              shuffleQuestions: values.shuffleQuestions,
+              randomOptionOrder: values.randomOptionOrder,
+              showResultImmediately: values.showResultImmediately,
+              password: values.password?.trim() || undefined,
+              startAt: toIso(values.startAt),
+              endAt: toIso(values.endAt),
+              questionIds: values.questionIds,
+            })
+          }
+        />
       )}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="New test" width="max-w-2xl">
-        <div className="space-y-4">
-          {formError && <ErrorAlert error={formError} />}
-          <Field label="Title">
-            <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </Field>
-          <Field label="Description">
-            <textarea className="input min-h-[60px]" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Course (optional)">
-              <select className="input" value={form.courseId} onChange={(e) => setForm({ ...form, courseId: e.target.value })}>
-                <option value="">No course</option>
-                {courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Duration (minutes)">
-              <input type="number" min="1" className="input" value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })} />
-            </Field>
-            <Field label="Passing marks">
-              <input type="number" min="0" className="input" value={form.passingMarks} onChange={(e) => setForm({ ...form, passingMarks: e.target.value })} />
-            </Field>
-            <Field label="Negative marks (per wrong answer)">
-              <input type="number" min="0" className="input" value={form.negativeMarks} onChange={(e) => setForm({ ...form, negativeMarks: e.target.value })} />
-            </Field>
-            <Field label="Max attempts">
-              <input type="number" min="1" max="10" className="input" value={form.maxAttempts} onChange={(e) => setForm({ ...form, maxAttempts: e.target.value })} />
-            </Field>
-            <Field label="Opens at (optional)">
-              <input type="datetime-local" className="input" value={form.startAt} onChange={(e) => setForm({ ...form, startAt: e.target.value })} />
-            </Field>
-            <Field label="Closes at (optional)">
-              <input type="datetime-local" className="input" value={form.endAt} onChange={(e) => setForm({ ...form, endAt: e.target.value })} />
-            </Field>
-          </div>
-
-          <div>
-            <label className="label">Questions ({form.questionIds.length} selected)</label>
-            <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
-              {questions.length === 0 && <p className="px-2 py-1 text-sm text-ink-subtle">No questions available — create some first.</p>}
-              {questions.map((q) => (
-                <label key={q.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-canvas">
-                  <input
-                    type="checkbox"
-                    checked={form.questionIds.includes(q.id)}
-                    onChange={() => toggleQuestion(q.id)}
-                    className="h-4 w-4 rounded border-line-strong text-accent"
-                  />
-                  <span className="truncate">{q.text}</span>
-                  <span className="ml-auto shrink-0 text-xs text-ink-subtle">{q.type} · {q.marks} pts</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
-              Shuffle order
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={form.randomOptionOrder} onChange={(e) => setForm({ ...form, randomOptionOrder: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
-              Random option order
-            </label>
-            <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={form.showResultImmediately} onChange={(e) => setForm({ ...form, showResultImmediately: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
-              Show result immediately
-            </label>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setCreateOpen(false)} className="btn-secondary">Cancel</button>
-            <button onClick={create} disabled={busy} className="btn-primary">{busy ? 'Creating…' : 'Create'}</button>
-          </div>
-        </div>
-      </Modal>
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => remove.mutate(confirm.id)}
+        loading={remove.isPending}
+        tone="danger"
+        title={`Delete ${confirm?.title}?`}
+        description="Attempts, assignments and results for this test are deleted with it. This cannot be undone."
+        confirmLabel="Delete test"
+      />
     </div>
   );
 }
+
+function TestEditor({ initial, saving, onSubmit, onClose }) {
+  const [search, setSearch] = useState('');
+  const [difficulty, setDifficulty] = useState('');
+  const debounced = useDebounced(search, 300);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm({ resolver: zodResolver(testSchema), defaultValues: initial });
+
+  const questionIds = watch('questionIds') ?? [];
+
+  const params = new URLSearchParams({ limit: '50' });
+  if (debounced) params.set('search', debounced);
+  if (difficulty) params.set('difficulty', difficulty);
+
+  const questions = useQuery({
+    queryKey: ['questions', 'test-picker', params.toString()],
+    queryFn: () => getData(`/questions?${params.toString()}`),
+    retry: retryUnlessDenied,
+    placeholderData: (previous) => previous,
+  });
+
+  const courses = useQuery({
+    queryKey: ['courses', 'picker'],
+    queryFn: () => getData('/courses?limit=100'),
+    retry: retryUnlessDenied,
+    staleTime: 5 * 60_000,
+  });
+
+  const available = questions.data?.items ?? [];
+  const selectedSet = new Set(questionIds);
+  const selectedMarks = useMemo(
+    () => available.filter((q) => selectedSet.has(q.id)).reduce((sum, q) => sum + Number(q.marks), 0),
+    // Marks only reflect questions currently loaded; the server recomputes the true
+    // total from every selected question when the test is created.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [available, questionIds],
+  );
+
+  const toggle = (id) => {
+    setValue('questionIds', selectedSet.has(id) ? questionIds.filter((q) => q !== id) : [...questionIds, id], {
+      shouldValidate: true,
+    });
+  };
+
+  return (
+    <Drawer open onClose={onClose} title="New test" width="xl">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+        <section className="space-y-4">
+          <Field label="Title" htmlFor="test-title" required error={errors.title?.message}>
+            <Input id="test-title" autoFocus {...register('title')} aria-invalid={Boolean(errors.title)} />
+          </Field>
+          <Field label="Description" htmlFor="test-description" error={errors.description?.message}>
+            <Textarea id="test-description" rows={2} {...register('description')} />
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Course" htmlFor="test-course" error={errors.courseId?.message}>
+              <Select id="test-course" {...register('courseId')}>
+                <option value="">Not linked to a course</option>
+                {(courses.data?.items ?? []).map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.code} — {course.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Exam mode" htmlFor="test-mode" error={errors.examMode?.message}>
+              <Select id="test-mode" {...register('examMode')}>
+                {EXAM_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {humanise(mode)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Duration (minutes)" htmlFor="test-duration" required error={errors.durationMinutes?.message}>
+              <Input id="test-duration" type="number" min="1" max="1440" {...register('durationMinutes')} />
+            </Field>
+            <Field label="Passing marks" htmlFor="test-pass" required error={errors.passingMarks?.message}>
+              <Input id="test-pass" type="number" step="0.5" min="0" {...register('passingMarks')} />
+            </Field>
+            <Field
+              label="Negative marks"
+              htmlFor="test-negative"
+              hint="Applied per wrong answer"
+              error={errors.negativeMarks?.message}
+            >
+              <Input id="test-negative" type="number" step="0.5" min="0" {...register('negativeMarks')} />
+            </Field>
+            <Field label="Attempts allowed" htmlFor="test-attempts" error={errors.maxAttempts?.message}>
+              <Input id="test-attempts" type="number" min="1" max="10" {...register('maxAttempts')} />
+            </Field>
+            <Field label="Opens at" htmlFor="test-start" hint="Local time" error={errors.startAt?.message}>
+              <Input id="test-start" type="datetime-local" {...register('startAt')} />
+            </Field>
+            <Field label="Closes at" htmlFor="test-end" hint="Local time" error={errors.endAt?.message}>
+              <Input id="test-end" type="datetime-local" {...register('endAt')} />
+            </Field>
+            <Field
+              label="Grace period (minutes)"
+              htmlFor="test-grace"
+              hint="Late entry allowance"
+              error={errors.gracePeriodMinutes?.message}
+            >
+              <Input id="test-grace" type="number" min="0" max="60" {...register('gracePeriodMinutes')} />
+            </Field>
+            <Field
+              label="Access password"
+              htmlFor="test-password"
+              hint="Leave blank for no password"
+              error={errors.password?.message}
+            >
+              <Input id="test-password" type="text" autoComplete="off" {...register('password')} />
+            </Field>
+          </div>
+
+          <div className="space-y-2">
+            <Checkbox id="test-shuffle" label="Shuffle question order per candidate" {...register('shuffleQuestions')} />
+            <Checkbox id="test-random-options" label="Randomise option order" {...register('randomOptionOrder')} />
+            <Checkbox
+              id="test-show-result"
+              label="Show the result to candidates immediately"
+              description="Turn this off when subjective answers need grading first."
+              {...register('showResultImmediately')}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-md border border-line">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Questions</h3>
+              <p className="tabular text-xs text-ink-muted">
+                {questionIds.length} selected · {formatNumber(selectedMarks)} marks on this page
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <SearchInput
+                aria-label="Search questions"
+                placeholder="Search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <Select aria-label="Difficulty" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+                <option value="">All difficulties</option>
+                {DIFFICULTIES.map((d) => (
+                  <option key={d} value={d}>
+                    {humanise(d)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {errors.questionIds?.message && (
+            <p className="border-b border-line px-3 py-2 text-sm text-critical">{errors.questionIds.message}</p>
+          )}
+
+          <div className="scrollbar-slim max-h-80 overflow-y-auto px-3">
+            {questions.isPending ? (
+              <div className="py-3">
+                <SkeletonTable rows={4} cols={2} />
+              </div>
+            ) : available.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-muted">No questions match this search.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {available.map((question) => (
+                  <li key={question.id} className="flex items-start gap-3 py-2.5">
+                    <Checkbox
+                      className="mt-0.5"
+                      aria-label={`Include ${question.text.slice(0, 40)}`}
+                      checked={selectedSet.has(question.id)}
+                      onChange={() => toggle(question.id)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-sm text-ink">{question.text}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <Badge tone={difficultyTone(question.difficulty)}>{humanise(question.difficulty)}</Badge>
+                        <span className="tabular text-xs text-ink-muted">{question.marks} marks</span>
+                        {question.topic && <span className="text-xs text-ink-subtle">{question.topic}</span>}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={saving}>
+            Create test
+          </Button>
+        </div>
+      </form>
+    </Drawer>
+  );
+}
+
+export { toLocalInput, toIso, statusTone };

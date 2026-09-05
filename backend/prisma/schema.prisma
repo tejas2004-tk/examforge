@@ -200,6 +200,10 @@ model User {
   organization  Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   avatarUrl     String?
   lastLoginAt   DateTime?
+  lastPasswordChangeAt DateTime?
+  failedLoginCount Int   @default(0)
+  lockedUntil   DateTime?
+  preferences   Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -244,11 +248,21 @@ model RefreshToken {
   token     String    @unique
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // A family groups every token derived from one login, so presenting a rotated
+  // token can revoke the whole chain rather than just that one row.
+  familyId    String
+  replacedById String?
+  ipAddress   String?
+  userAgent   String?  @db.Text
+  device      String?
+  lastUsedAt  DateTime?
   expiresAt DateTime
   revokedAt DateTime?
+  revokedReason String?
   createdAt DateTime  @default(now())
 
   @@index([userId])
+  @@index([familyId])
 }
 
 model VerificationToken {
@@ -270,11 +284,13 @@ model LoginHistory {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   ip        String?
-  userAgent String?
+  userAgent String?  @db.Text
   success   Boolean  @default(true)
+  reason    String?
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([userId, createdAt])
 }
 
 model AuditLog {
@@ -444,6 +460,7 @@ model Test {
 
   @@index([courseId])
   @@index([status])
+  @@index([createdById])
 }
 
 model QuestionPool {
@@ -639,6 +656,8 @@ model Attempt {
 
   @@index([testId])
   @@index([studentId])
+  // Analytics filters on status plus a submission-date range on every query.
+  @@index([status, submittedAt])
 }
 
 model AttemptAnswer {

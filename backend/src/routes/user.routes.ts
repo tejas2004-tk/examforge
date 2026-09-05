@@ -5,17 +5,26 @@ import { auditLog } from '../middleware/audit.js';
 import {
   createUser,
   deleteUser,
+  getMyPreferences,
   listUsers,
+  patchMyPreferences,
+  updateMyProfile,
   updateUser,
 } from '../controllers/user.controller.js';
 
-const adminOnly = requireRole('ADMIN');
-
 export const userRouter = Router();
 
-userRouter.use(requireAuth, adminOnly);
+userRouter.use(requireAuth);
 
-userRouter.get('/', listUsers);
-userRouter.post('/', auditLog('CREATE', 'User'), createUser);
-userRouter.patch('/:id', auditLog('UPDATE', 'User'), updateUser);
-userRouter.delete('/:id', auditLog('DELETE', 'User'), deleteUser);
+// Self-service routes are declared before the administrator guard so that
+// "/me/..." never falls under requireRole('ADMIN').
+userRouter.get('/me/preferences', getMyPreferences);
+userRouter.patch('/me/preferences', patchMyPreferences);
+userRouter.patch('/me', updateMyProfile);
+
+const adminOnly = requireRole('ADMIN', 'ORG_ADMIN');
+
+userRouter.get('/', adminOnly, listUsers);
+userRouter.post('/', adminOnly, auditLog('CREATE', 'User'), createUser);
+userRouter.patch('/:id', adminOnly, auditLog('UPDATE', 'User'), updateUser);
+userRouter.delete('/:id', adminOnly, auditLog('DELETE', 'User'), deleteUser);

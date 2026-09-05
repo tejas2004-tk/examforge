@@ -4,25 +4,40 @@ import { AppError } from '../utils/errors.js';
 import { parsePagination } from '../utils/pagination.js';
 import type { CreateTestInput, UpdateTestInput, AssignTestInput } from '../schemas/test.schema.js';
 import { serializeQuestion } from './question.service.js';
+import { assertTestOwner } from './access.service.js';
+import { isAdmin } from '../middleware/authorize.js';
 import { createManyNotifications } from './notification.service.js';
+import { searchStudents } from './user.service.js';
+import { logAudit } from './audit.service.js';
 
 const dateOrUndef = (v?: string | null) => (v ? new Date(v) : undefined);
 
-const getQuestionIds = async (questionIds: string[]): Promise<{ id: string; marks: Prisma.Decimal }[]> => {
+/**
+ * Resolves the questions a test may reference. A teacher can only build tests
+ * from questions they authored, otherwise adding an arbitrary id to a draft
+ * would leak another author's item and its answer key through the test editor.
+ */
+const getQuestionIds = async (
+  questionIds: string[],
+  viewer: { id: string; role: string },
+): Promise<{ id: string; marks: Prisma.Decimal }[]> => {
   const questions = await prisma.question.findMany({
-    where: { id: { in: questionIds } },
+    where: {
+      id: { in: questionIds },
+      ...(isAdmin(viewer.role) ? {} : { createdById: viewer.id }),
+    },
     select: { id: true, marks: true },
   });
   if (questions.length !== new Set(questionIds).size) {
-    throw new AppError(400, 'One or more questions do not exist');
+    throw new AppError(400, 'One or more questions do not exist or are not yours', undefined, 'BAD_REQUEST');
   }
   return questions;
 };
 
-export const createTest = async (userId: string, input: CreateTestInput) => {
+export const createTest = async (userId: string, input: CreateTestInput, role = Role.TEACHER as string) => {
   const { questionIds, totalMarks, ...rest } = input;
 
-  const questions = questionIds ? await getQuestionIds(questionIds) : [];
+  const questions = questionIds ? await getQuestionIds(questionIds, { id: userId, role }) : [];
   const computedTotal = totalMarks ?? questions.reduce((sum, q) => sum + Number(q.marks), 0);
 
   return prisma.test.create({
@@ -45,7 +60,7 @@ export const listTests = async (viewer: { id: string; role: string }, query: Rec
   const { page, limit, skip } = parsePagination(query);
 
   const where: Prisma.TestWhereInput = {};
-  if (viewer.role === Role.TEACHER) where.createdById = viewer.id;
+  if (!isAdmin(viewer.role)) where.createdById = viewer.id;
   if (typeof query.status === 'string') where.status = query.status as TestStatus;
   if (typeof query.search === 'string' && query.search.trim()) {
     where.title = { contains: query.search.trim() };
@@ -71,7 +86,11 @@ export const listTests = async (viewer: { id: string; role: string }, query: Rec
   };
 };
 
-export const getTest = async (id: string) => {
+export const getTest = async (id: string, viewer: { id: string; role: string }) => {
+  // A full test payload includes correct answers, so it is readable only by the
+  // author or an administrator.
+  await assertTestOwner(id, viewer);
+
   const test = await prisma.test.findUnique({
     where: { id },
     include: {
@@ -120,9 +139,8 @@ export const getAssignedTest = async (id: string) => {
 };
 
 export const updateTest = async (id: string, viewer: { id: string; role: string }, input: UpdateTestInput) => {
-  const test = await prisma.test.findUnique({ where: { id } });
-  if (!test) throw new AppError(404, 'Test not found');
-  if (viewer.role !== Role.ADMIN && test.createdById !== viewer.id) throw new AppError(403, 'Not authorized');
+  await assertTestOwner(id, viewer);
+  const test = await prisma.test.findUniqueOrThrow({ where: { id } });
   if (test.status !== TestStatus.DRAFT) {
     throw new AppError(400, 'Only draft tests can be edited. Unpublish the test first.');
   }
@@ -148,30 +166,42 @@ export const updateTest = async (id: string, viewer: { id: string; role: string 
   data.endAt = rest.endAt !== undefined ? dateOrUndef(rest.endAt) : test.endAt;
 
   if (questionIds) {
-    const questions = await getQuestionIds(questionIds);
+    const questions = await getQuestionIds(questionIds, viewer);
     if (rest.totalMarks === undefined) {
       data.totalMarks = new Prisma.Decimal(questions.reduce((sum, q) => sum + Number(q.marks), 0));
     }
-    await prisma.testQuestion.deleteMany({ where: { testId: id } });
-    data.testQuestions = {
-      create: questionIds.map((qid, i) => ({ questionId: qid, orderIndex: i })),
-    };
+    // Clearing and re-creating the question set must not be observable as an
+    // empty test, so both halves share one transaction.
+    return prisma.$transaction(async (tx) => {
+      await tx.testQuestion.deleteMany({ where: { testId: id } });
+      return tx.test.update({
+        where: { id },
+        data: {
+          ...data,
+          testQuestions: { create: questionIds.map((qid, i) => ({ questionId: qid, orderIndex: i })) },
+        },
+      });
+    });
   }
 
   return prisma.test.update({ where: { id }, data });
 };
 
 export const setTestStatus = async (id: string, viewer: { id: string; role: string }, status: TestStatus) => {
-  const test = await prisma.test.findUnique({ where: { id }, select: { createdById: true } });
-  if (!test) throw new AppError(404, 'Test not found');
-  if (viewer.role !== Role.ADMIN && test.createdById !== viewer.id) throw new AppError(403, 'Not authorized');
-  return prisma.test.update({ where: { id }, data: { status } });
+  await assertTestOwner(id, viewer);
+  const updated = await prisma.test.update({ where: { id }, data: { status } });
+  await logAudit({
+    userId: viewer.id,
+    action: `TEST_${status}`,
+    entity: 'Test',
+    entityId: id,
+    metadata: { title: updated.title },
+  });
+  return updated;
 };
 
 export const assignTest = async (id: string, viewer: { id: string; role: string }, input: AssignTestInput) => {
-  const test = await prisma.test.findUnique({ where: { id } });
-  if (!test) throw new AppError(404, 'Test not found');
-  if (viewer.role !== Role.ADMIN && test.createdById !== viewer.id) throw new AppError(403, 'Not authorized');
+  await assertTestOwner(id, viewer);
 
   const students = await prisma.user.findMany({
     where: { id: { in: input.studentIds }, role: Role.STUDENT },
@@ -211,7 +241,8 @@ export const assignTest = async (id: string, viewer: { id: string; role: string 
   return { assigned: toCreate.length };
 };
 
-export const listAssignedStudents = async (id: string) => {
+export const listAssignedStudents = async (id: string, viewer: { id: string; role: string }) => {
+  await assertTestOwner(id, viewer);
   const assignments = await prisma.testAssignment.findMany({
     where: { testId: id },
     include: { student: { select: { id: true, fullName: true, email: true, username: true } } },
@@ -219,26 +250,10 @@ export const listAssignedStudents = async (id: string) => {
   return assignments.map((a) => a.student);
 };
 
-export const listStudentsForAssignment = async (search?: string) => {
-  const where: Prisma.UserWhereInput = { role: Role.STUDENT };
-  if (search && search.trim()) {
-    where.OR = [
-      { email: { contains: search.trim() } },
-      { username: { contains: search.trim() } },
-      { fullName: { contains: search.trim() } },
-    ];
-  }
-  return prisma.user.findMany({
-    where,
-    select: { id: true, fullName: true, email: true, username: true },
-    orderBy: { email: 'asc' },
-    take: 100,
-  });
-};
+export const listStudentsForAssignment = (search?: string) => searchStudents(search, 100);
 
 export const deleteTest = async (id: string, viewer: { id: string; role: string }) => {
-  const test = await prisma.test.findUnique({ where: { id }, select: { createdById: true } });
-  if (!test) throw new AppError(404, 'Test not found');
-  if (viewer.role !== Role.ADMIN && test.createdById !== viewer.id) throw new AppError(403, 'Not authorized');
+  await assertTestOwner(id, viewer);
   await prisma.test.delete({ where: { id } });
+  await logAudit({ userId: viewer.id, action: 'TEST_DELETED', entity: 'Test', entityId: id });
 };

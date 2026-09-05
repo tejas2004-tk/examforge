@@ -1,174 +1,321 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import {
-  ChartBar,
-  ClipboardList,
-  CodeXml,
-  FileCheck,
-  Library,
-  TriangleAlert,
-  Users,
-} from 'lucide-react';
-import { api } from '../../api/client.js';
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { ClipboardList, FileQuestion, FolderPlus, Plus, Users } from 'lucide-react';
 import {
   Badge,
+  Button,
   EmptyState,
   ErrorAlert,
   PageHeader,
   Panel,
-  Spinner,
   StatTile,
-  statusTone,
+  Table,
 } from '../../components/ui.jsx';
-
-const QUICK_ACTIONS = [
-  { to: '/teacher/tests', label: 'Manage tests', icon: FileCheck },
-  { to: '/teacher/questions', label: 'Create questions', icon: ClipboardList },
-  { to: '/teacher/banks', label: 'Question banks', icon: Library },
-  { to: '/teacher/coding-problems', label: 'Coding problems', icon: CodeXml },
-  { to: '/teacher/results', label: 'Grade submissions', icon: ChartBar },
-];
+import { formatDate, formatNumber, formatPercent, formatRelative } from '../../lib/format.js';
+import { StatSkeleton } from '../_shared/Async.jsx';
+import { getData, getDataOptional, retryUnlessDenied } from '../_shared/request.js';
+import { axisProps, tooltipProps, useChartColors } from '../_shared/chart.js';
+import { humanise } from '../_shared/domain.js';
 
 export function TeacherDashboard() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
+  const colors = useChartColors();
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.get('/tests'),
-      api.get('/questions'),
-      api.get('/results'),
-      api.get('/courses'),
-      api.get('/assignments'),
-    ])
-      .then(([tests, questions, results, courses, assignments]) => {
-        if (cancelled) return;
-        setData({
-          tests: tests.data.data.items,
-          questions: questions.data.data.items,
-          results: results.data.data.items,
-          courses: courses.data.data.items,
-          assignments: assignments.data.data.items,
-        });
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [tests, questions, results, courses, assignments] = useQueries({
+    queries: [
+      { queryKey: ['tests', { limit: 100 }], queryFn: () => getData('/tests?limit=100'), retry: retryUnlessDenied },
+      { queryKey: ['questions', { limit: 1 }], queryFn: () => getData('/questions?limit=1'), retry: retryUnlessDenied },
+      { queryKey: ['results', { limit: 50 }], queryFn: () => getData('/results?limit=50'), retry: retryUnlessDenied },
+      { queryKey: ['courses', { limit: 100 }], queryFn: () => getData('/courses?limit=100'), retry: retryUnlessDenied },
+      { queryKey: ['assignments', { limit: 50 }], queryFn: () => getData('/assignments?limit=50'), retry: retryUnlessDenied },
+    ],
+  });
 
-  const stats = useMemo(() => {
-    if (!data) return null;
-    return {
-      published: data.tests.filter((t) => t.status === 'PUBLISHED').length,
-      needsGrading: data.results.filter((r) => r.status === 'SUBMITTED').length,
-      flagged: data.results.filter((r) => (r.suspiciousEventCount ?? 0) > 0).length,
-    };
-  }, [data]);
+  const overview = useQuery({
+    queryKey: ['analytics', 'overview', '30d'],
+    queryFn: () => getDataOptional('/analytics/overview?range=30d'),
+    retry: retryUnlessDenied,
+    staleTime: 60_000,
+  });
 
-  if (error) return <ErrorAlert error={error} />;
-  if (!data) return <Spinner />;
+  const loading = [tests, questions, results, courses, assignments].some((q) => q.isPending);
+  const failed = [tests, questions, results, courses, assignments].find((q) => q.isError);
 
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Teacher"
-        title="Dashboard"
-        description="Your courses, question banks, tests and grading queue."
-      />
-
-      {/* Grading and integrity lead, because they are the items that need action
-          today; inventory counts sit below as context. */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile
-          label="Needs grading"
-          value={stats.needsGrading}
-          hint={`${data.results.length} submissions total`}
-          tone={stats.needsGrading > 0 ? 'caution' : 'positive'}
-          icon={ClipboardList}
-        />
-        <StatTile
-          label="Flagged attempts"
-          value={stats.flagged}
-          hint="Suspicious proctoring events"
-          tone={stats.flagged > 0 ? 'critical' : 'positive'}
-          icon={TriangleAlert}
-        />
-        <StatTile
-          label="Published tests"
-          value={stats.published}
-          hint={`${data.tests.length} authored`}
-          icon={FileCheck}
-        />
-        <StatTile
-          label="Courses"
-          value={data.courses.length}
-          hint={`${data.questions.length} questions · ${data.assignments.length} assignments`}
-          icon={Users}
+  if (failed) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="Teaching" title="Dashboard" />
+        <ErrorAlert
+          error={failed.error}
+          onRetry={() => [tests, questions, results, courses, assignments].forEach((q) => q.refetch())}
         />
       </div>
+    );
+  }
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+  const testItems = tests.data?.items ?? [];
+  const resultItems = results.data?.items ?? [];
+  const assignmentItems = assignments.data?.items ?? [];
+
+  const published = testItems.filter((t) => t.status === 'PUBLISHED');
+  const drafts = testItems.filter((t) => t.status === 'DRAFT');
+  const scored = resultItems.filter((r) => r.percentage !== null);
+  const avgPercentage = scored.length
+    ? scored.reduce((sum, r) => sum + Number(r.percentage), 0) / scored.length
+    : null;
+  const awaitingGrading = resultItems.filter((r) => r.status === 'SUBMITTED').length;
+
+  // Test volume comes straight off the list payload, so the ranking survives even
+  // when the analytics service is unavailable.
+  const byAttempts = testItems
+    .map((t) => ({ id: t.id, title: t.title, attempts: t._count?.attempts ?? 0, questions: t._count?.testQuestions ?? 0 }))
+    .filter((t) => t.attempts > 0)
+    .sort((a, b) => b.attempts - a.attempts)
+    .slice(0, 8);
+
+  const dueSoon = assignmentItems
+    .filter((a) => a.dueAt && new Date(a.dueAt) > new Date())
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Teaching"
+        title="Dashboard"
+        description="Your tests, question stock and the submissions waiting on you."
+        actions={
+          <div className="flex gap-2">
+            <Button as={Link} to="/teacher/questions" variant="secondary" icon={FolderPlus}>
+              Add questions
+            </Button>
+            <Button as={Link} to="/teacher/tests" icon={Plus}>
+              New test
+            </Button>
+          </div>
+        }
+      />
+
+      {loading ? (
+        <StatSkeleton count={4} />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatTile
+            label="Published tests"
+            value={formatNumber(published.length)}
+            hint={`${formatNumber(drafts.length)} in draft`}
+            icon={ClipboardList}
+          />
+          <StatTile
+            label="Questions authored"
+            value={formatNumber(questions.data?.meta?.total ?? 0)}
+            hint={`Across ${formatNumber(courses.data?.meta?.total ?? 0)} courses`}
+            icon={FileQuestion}
+          />
+          <StatTile
+            label="Submissions"
+            value={formatNumber(results.data?.meta?.total ?? 0)}
+            hint={awaitingGrading > 0 ? `${formatNumber(awaitingGrading)} awaiting grading` : 'All graded'}
+            tone={awaitingGrading > 0 ? 'caution' : 'neutral'}
+            icon={Users}
+          />
+          <StatTile
+            label="Average score"
+            value={avgPercentage === null ? 'No data' : formatPercent(avgPercentage)}
+            hint={`${formatNumber(scored.length)} scored attempts`}
+            tone={avgPercentage !== null && avgPercentage >= 60 ? 'positive' : 'neutral'}
+          />
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Panel
-          className="lg:col-span-2"
-          title="Recent submissions"
+          title="Attempts over the last 30 days"
           action={
-            <Link to="/teacher/results" className="link text-[0.8125rem]">
-              View all
+            <Link className="link text-sm" to="/analytics">
+              Full analytics
             </Link>
           }
-          bodyClassName="p-2"
         >
-          {data.results.length === 0 ? (
-            <div className="p-3">
-              <EmptyState
-                title="No submissions yet"
-                description="Attempts appear here as soon as students submit a published test."
-              />
+          {overview.isPending ? (
+            <div className="h-56 animate-pulse rounded-md bg-surface-sunken" />
+          ) : overview.data?.series?.length ? (
+            <div className="h-56" role="img" aria-label="Attempts per day over the last 30 days">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={overview.data.series} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+                  <defs>
+                    <linearGradient id="teacher-attempts" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={colors.accent} stopOpacity={0.28} />
+                      <stop offset="100%" stopColor={colors.accent} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={colors.line} vertical={false} />
+                  <XAxis dataKey="date" {...axisProps(colors)} />
+                  <YAxis {...axisProps(colors)} width={40} allowDecimals={false} />
+                  <Tooltip {...tooltipProps(colors)} />
+                  <Area
+                    type="monotone"
+                    dataKey="attempts"
+                    name="Attempts"
+                    stroke={colors.accent}
+                    strokeWidth={2}
+                    fill="url(#teacher-attempts)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : byAttempts.length > 0 ? (
+            <div className="h-56" role="img" aria-label="Attempts per test">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byAttempts} layout="vertical" margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+                  <CartesianGrid stroke={colors.line} horizontal={false} />
+                  <XAxis type="number" {...axisProps(colors)} allowDecimals={false} />
+                  <YAxis type="category" dataKey="title" width={140} {...axisProps(colors)} />
+                  <Tooltip {...tooltipProps(colors)} />
+                  <Bar dataKey="attempts" name="Attempts" fill={colors.accent} radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           ) : (
+            <EmptyState
+              title="No attempts recorded"
+              description="Publish a test and assign it to a class to start collecting data."
+              action={
+                <Button as={Link} to="/teacher/tests">
+                  Go to tests
+                </Button>
+              }
+            />
+          )}
+        </Panel>
+
+        <Panel title="Assignments due soon">
+          {dueSoon.length === 0 ? (
+            <EmptyState
+              title="Nothing due"
+              description="Assignments with a future deadline appear here."
+              action={
+                <Button as={Link} to="/teacher/assignments" variant="secondary">
+                  Assignments
+                </Button>
+              }
+            />
+          ) : (
             <ul className="divide-y divide-line">
-              {data.results.slice(0, 7).map((r) => (
-                <li key={r.id}>
-                  <Link
-                    to={`/teacher/results/${r.id}`}
-                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent-soft/50"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">
-                        {r.student?.fullName ?? r.student?.email}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-ink-subtle">{r.test.title}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {r.suspiciousEventCount > 0 && (
-                        <Badge tone="critical">{r.suspiciousEventCount} flags</Badge>
-                      )}
-                      <Badge tone={statusTone(r.status)}>{r.status.replace(/_/g, ' ').toLowerCase()}</Badge>
-                    </div>
-                  </Link>
+              {dueSoon.map((assignment) => (
+                <li key={assignment.id} className="py-2.5">
+                  <p className="truncate text-sm font-medium text-ink">{assignment.title}</p>
+                  <p className="text-xs text-ink-muted">
+                    Due {formatRelative(assignment.dueAt)} · {formatNumber(assignment._count?.submissions ?? 0)} submitted
+                  </p>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
+      </div>
 
-        <Panel title="Quick actions" bodyClassName="p-3">
-          <div className="grid gap-1.5">
-            {QUICK_ACTIONS.map(({ to, label, icon: Icon }) => (
-              <Link
-                key={to}
-                to={to}
-                className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-accent-soft hover:text-accent-ink"
-              >
-                <Icon className="h-4 w-4 shrink-0 text-ink-subtle group-hover:text-accent" aria-hidden="true" />
-                {label}
-              </Link>
-            ))}
-          </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel
+          title="Latest submissions"
+          action={
+            <Link className="link text-sm" to="/teacher/results">
+              All submissions
+            </Link>
+          }
+        >
+          {resultItems.length === 0 ? (
+            <EmptyState title="No submissions yet" description="Attempts appear as soon as candidates submit." />
+          ) : (
+            <Table
+              dense
+              head={[
+                { key: 'student', label: 'Candidate' },
+                { key: 'test', label: 'Test' },
+                { key: 'score', label: 'Score', align: 'right' },
+                { key: 'when', label: 'Submitted' },
+              ]}
+            >
+              {resultItems.slice(0, 8).map((result) => (
+                <tr key={result.id}>
+                  <td>
+                    <Link className="link" to={`/teacher/results/${result.id}`}>
+                      {result.student?.fullName ?? result.student?.email ?? 'Unknown'}
+                    </Link>
+                  </td>
+                  <td className="max-w-[14rem] truncate text-ink-muted">{result.test.title}</td>
+                  <td className="tabular text-right">
+                    {result.percentage === null ? (
+                      <Badge tone="caution">Awaiting grading</Badge>
+                    ) : (
+                      formatPercent(result.percentage)
+                    )}
+                  </td>
+                  <td className="text-ink-muted">{formatDate(result.submittedAt)}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </Panel>
+
+        <Panel
+          title="Your tests"
+          action={
+            <Link className="link text-sm" to="/teacher/tests">
+              Manage
+            </Link>
+          }
+        >
+          {testItems.length === 0 ? (
+            <EmptyState
+              title="No tests yet"
+              description="Build a test from your question bank or author questions one at a time."
+              action={
+                <Button as={Link} to="/teacher/tests">
+                  Create a test
+                </Button>
+              }
+            />
+          ) : (
+            <Table
+              dense
+              head={[
+                { key: 'title', label: 'Test' },
+                { key: 'status', label: 'Status' },
+                { key: 'questions', label: 'Questions', align: 'right' },
+                { key: 'attempts', label: 'Attempts', align: 'right' },
+              ]}
+            >
+              {testItems.slice(0, 8).map((test) => (
+                <tr key={test.id}>
+                  <td>
+                    <Link className="link" to={`/teacher/tests/${test.id}`}>
+                      {test.title}
+                    </Link>
+                  </td>
+                  <td>
+                    <Badge
+                      tone={test.status === 'PUBLISHED' ? 'positive' : test.status === 'CLOSED' ? 'neutral' : 'caution'}
+                    >
+                      {humanise(test.status)}
+                    </Badge>
+                  </td>
+                  <td className="tabular text-right">{formatNumber(test._count?.testQuestions ?? 0)}</td>
+                  <td className="tabular text-right">{formatNumber(test._count?.attempts ?? 0)}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
         </Panel>
       </div>
     </div>

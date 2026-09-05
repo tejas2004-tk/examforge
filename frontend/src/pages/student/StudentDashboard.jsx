@@ -1,212 +1,341 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, ClipboardList, FileCheck, TrendingUp } from 'lucide-react';
-import { api } from '../../api/client.js';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { BookOpen, FileText, Trophy } from 'lucide-react';
 import {
   Badge,
+  Button,
   EmptyState,
   ErrorAlert,
   PageHeader,
   Panel,
-  Spinner,
+  ProgressBar,
   StatTile,
+  Table,
 } from '../../components/ui.jsx';
-
-const dateOnly = (value) => new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-const dateTime = (value) =>
-  new Date(value).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+import { formatDate, formatNumber, formatPercent, formatRelative } from '../../lib/format.js';
+import { StatSkeleton } from '../_shared/Async.jsx';
+import { getData, getDataOptional, retryUnlessDenied } from '../_shared/request.js';
+import { axisProps, tooltipProps, useChartColors } from '../_shared/chart.js';
 
 export function StudentDashboard() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
+  const colors = useChartColors();
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([api.get('/tests/assigned'), api.get('/results/my'), api.get('/assignments')])
-      .then(([tests, results, assignments]) => {
-        if (cancelled) return;
-        setData({
-          tests: tests.data.data.items,
-          results: results.data.data.items,
-          assignments: assignments.data.data.items,
-        });
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err);
-      });
-    // Guard against setting state after unmount when the user navigates away
-    // mid-flight.
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [assigned, results, assignments, myCourses] = useQueries({
+    queries: [
+      { queryKey: ['tests', 'assigned'], queryFn: () => getData('/tests/assigned'), retry: retryUnlessDenied },
+      { queryKey: ['results', 'my'], queryFn: () => getData('/results/my?limit=50'), retry: retryUnlessDenied },
+      { queryKey: ['assignments', 'student'], queryFn: () => getData('/assignments?limit=20'), retry: retryUnlessDenied },
+      { queryKey: ['my-courses'], queryFn: () => getData('/my-courses'), retry: retryUnlessDenied },
+    ],
+  });
 
-  const stats = useMemo(() => {
-    if (!data) return null;
+  const progress = useQuery({
+    queryKey: ['analytics', 'me'],
+    queryFn: () => getDataOptional('/analytics/me'),
+    retry: retryUnlessDenied,
+    staleTime: 60_000,
+  });
 
-    const available = data.tests.filter((t) => t.canAttempt).length;
-    const passed = data.results.filter((r) => r.passed).length;
-    const pendingAssignments = data.assignments.filter((a) => a._count?.submissions === 0).length;
+  const loading = [assigned, results, assignments, myCourses].some((q) => q.isPending);
+  const failed = [assigned, results, assignments, myCourses].find((q) => q.isError);
 
-    // Average as a percentage of each test's own total. Averaging raw scores
-    // (the previous behaviour) mixes a 10-mark quiz with a 100-mark paper and
-    // produces a number that means nothing.
-    const scored = data.results.filter((r) => r.score !== null && r.test?.totalMarks > 0);
-    const avgPercent = scored.length
-      ? Math.round(scored.reduce((sum, r) => sum + (r.score / r.test.totalMarks) * 100, 0) / scored.length)
-      : null;
-
-    return { available, passed, pendingAssignments, avgPercent, attempts: data.results.length };
-  }, [data]);
-
-  if (error) return <ErrorAlert error={error} />;
-  if (!data) return <Spinner />;
-
-  return (
-    <div>
-      <PageHeader
-        eyebrow="Student"
-        title="Dashboard"
-        description="Your assigned tests, assignments and performance at a glance."
-      />
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile
-          label="Available now"
-          value={stats.available}
-          hint={`${data.tests.length} assigned in total`}
-          tone={stats.available > 0 ? 'accent' : 'neutral'}
-          icon={FileCheck}
-        />
-        <StatTile
-          label="Attempts taken"
-          value={stats.attempts}
-          hint={`${stats.passed} passed`}
-          icon={ClipboardList}
-        />
-        <StatTile
-          label="Average score"
-          value={stats.avgPercent === null ? '—' : `${stats.avgPercent}%`}
-          hint={stats.avgPercent === null ? 'No graded attempts yet' : 'Across graded attempts'}
-          tone={stats.avgPercent === null ? 'neutral' : stats.avgPercent >= 50 ? 'positive' : 'critical'}
-          icon={TrendingUp}
-        />
-        <StatTile
-          label="Assignments due"
-          value={stats.pendingAssignments}
-          hint={`${data.assignments.length} in total`}
-          tone={stats.pendingAssignments > 0 ? 'caution' : 'positive'}
-          icon={Award}
+  if (failed) {
+    return (
+      <div className="space-y-5">
+        <PageHeader eyebrow="Learning" title="Dashboard" />
+        <ErrorAlert
+          error={failed.error}
+          onRetry={() => [assigned, results, assignments, myCourses].forEach((q) => q.refetch())}
         />
       </div>
+    );
+  }
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+  const tests = assigned.data?.items ?? [];
+  const resultItems = results.data?.items ?? [];
+  const assignmentItems = assignments.data?.items ?? [];
+  const enrollments = myCourses.data?.enrollments ?? [];
+
+  const openNow = tests.filter((t) => t.canAttempt);
+  const scored = resultItems.filter((r) => r.percentage !== null);
+  const avgPercentage = scored.length
+    ? scored.reduce((sum, r) => sum + Number(r.percentage), 0) / scored.length
+    : null;
+  const passed = resultItems.filter((r) => r.passed).length;
+
+  // Fall back to deriving the trend from the results list when the analytics
+  // endpoint is unavailable, so the chart is never blank for an active candidate.
+  const series =
+    progress.data?.series?.length
+      ? progress.data.series
+      : scored
+          .slice()
+          .reverse()
+          .map((r) => ({
+            date: new Date(r.submittedAt).toISOString().slice(0, 10),
+            avgScore: Number(r.percentage),
+          }));
+
+  const progressByCourse = new Map(
+    (progress.data?.byCourse ?? []).map((course) => [course.courseId, course.progress ?? 0]),
+  );
+
+  const upcomingAssignments = assignmentItems
+    .filter((a) => a.dueAt && new Date(a.dueAt) > new Date())
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        eyebrow="Learning"
+        title="Dashboard"
+        description="Tests open to you now, your recent scores and where you left off."
+        actions={
+          <div className="flex gap-2">
+            <Button as={Link} to="/student/progress" variant="secondary">
+              My progress
+            </Button>
+            <Button as={Link} to="/student/tests">
+              My tests
+            </Button>
+          </div>
+        }
+      />
+
+      {loading ? (
+        <StatSkeleton count={4} />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatTile
+            label="Open now"
+            value={formatNumber(openNow.length)}
+            hint={`${formatNumber(tests.length)} assigned in total`}
+            tone={openNow.length > 0 ? 'accent' : 'neutral'}
+            icon={FileText}
+          />
+          <StatTile
+            label="Attempts"
+            value={formatNumber(resultItems.length)}
+            hint={`${formatNumber(passed)} passed`}
+            icon={Trophy}
+          />
+          <StatTile
+            label="Average score"
+            value={avgPercentage === null ? 'No results' : formatPercent(avgPercentage)}
+            hint="Across evaluated attempts"
+          />
+          <StatTile
+            label="Courses"
+            value={formatNumber(enrollments.length)}
+            hint={`${formatNumber(assignmentItems.length)} assignments`}
+            icon={BookOpen}
+          />
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Panel
-          className="lg:col-span-2"
-          title="Upcoming tests"
+          title="Open tests"
+          description="Start when you are ready; the timer runs from the moment you begin."
           action={
-            <Link to="/student/tests" className="link text-[0.8125rem]">
-              View all
+            <Link className="link text-sm" to="/student/tests">
+              All tests
             </Link>
           }
-          bodyClassName="p-2"
         >
-          {data.tests.length === 0 ? (
-            <div className="p-3">
-              <EmptyState title="No tests assigned" description="New tests will appear here once a teacher assigns them." />
-            </div>
+          {openNow.length === 0 ? (
+            <EmptyState
+              title="Nothing open right now"
+              description={
+                tests.length > 0
+                  ? 'Your assigned tests are outside their window or you have used every attempt.'
+                  : 'Once a teacher assigns you a test it appears here.'
+              }
+            />
           ) : (
             <ul className="divide-y divide-line">
-              {data.tests.slice(0, 6).map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-4 rounded-lg px-3 py-2.5">
+              {openNow.slice(0, 5).map((test) => (
+                <li key={test.id} className="flex items-center justify-between gap-3 py-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink">{t.title}</p>
-                    <p className="mt-0.5 truncate text-xs text-ink-subtle">
-                      {t.course?.name ?? 'No course'} · {t.durationMinutes} min
+                    <p className="truncate text-sm font-medium text-ink">{test.title}</p>
+                    <p className="tabular text-xs text-ink-muted">
+                      {test.durationMinutes} min · {test.questionCount} questions · {test.totalMarks} marks
+                      {test.endAt ? ` · closes ${formatRelative(test.endAt)}` : ''}
                     </p>
                   </div>
-                  {t.canAttempt ? (
-                    <Link to={`/student/tests/${t.id}/exam`} className="btn-primary btn-sm shrink-0">
-                      Start
-                    </Link>
-                  ) : (
-                    <Badge tone="neutral">{t.attemptsLeft === 0 ? 'No attempts left' : 'Not open'}</Badge>
-                  )}
+                  <Button as={Link} to={`/student/tests/${test.id}/exam`} size="sm">
+                    {test.attemptsUsed > 0 ? 'Retake' : 'Start'}
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4">
-          <Panel
-            title="Assignments"
-            action={
-              <Link to="/student/assignments" className="link text-[0.8125rem]">
-                View all
-              </Link>
-            }
-            bodyClassName="p-2"
-          >
-            {data.assignments.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-ink-subtle">No assignments yet.</p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {data.assignments.slice(0, 4).map((a) => {
-                  const submitted = a._count?.submissions > 0;
-                  return (
-                    <li key={a.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">{a.title}</p>
-                        <p className="mt-0.5 truncate text-xs text-ink-subtle">
-                          {a.course?.name ?? 'No course'}
-                          {a.dueAt && ` · due ${dateOnly(a.dueAt)}`}
-                        </p>
-                      </div>
-                      <Badge tone={submitted ? 'positive' : 'caution'}>
-                        {submitted ? 'Submitted' : 'Pending'}
-                      </Badge>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Panel>
-
-          <Panel
-            title="Recent results"
-            action={
-              <Link to="/student/results" className="link text-[0.8125rem]">
-                View all
-              </Link>
-            }
-            bodyClassName="p-2"
-          >
-            {data.results.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-ink-subtle">No results yet.</p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {data.results.slice(0, 4).map((r) => (
-                  <li key={r.id}>
-                    <Link
-                      to={`/student/results/${r.id}`}
-                      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent-soft/50"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">{r.test.title}</p>
-                        <p className="mt-0.5 text-xs text-ink-subtle">{dateTime(r.submittedAt)}</p>
-                      </div>
-                      <span className="tabular shrink-0 text-sm font-semibold text-ink">
-                        {r.score !== null ? `${r.score}/${r.test.totalMarks}` : '—'}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </div>
+        <Panel
+          title="Score trend"
+          action={
+            <Link className="link text-sm" to="/student/progress">
+              Details
+            </Link>
+          }
+        >
+          {series.length === 0 ? (
+            <EmptyState title="No scores yet" description="Submit a test to start the trend." />
+          ) : (
+            <div className="h-56" role="img" aria-label="Score percentage over time">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+                  <CartesianGrid stroke={colors.line} vertical={false} />
+                  <XAxis dataKey="date" {...axisProps(colors)} />
+                  <YAxis {...axisProps(colors)} width={40} domain={[0, 100]} />
+                  <Tooltip {...tooltipProps(colors)} />
+                  <Line
+                    type="monotone"
+                    dataKey="avgScore"
+                    name="Score"
+                    stroke={colors.accent}
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: colors.accent, strokeWidth: 0 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Panel>
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel
+          title="Recent results"
+          action={
+            <Link className="link text-sm" to="/student/results">
+              All results
+            </Link>
+          }
+        >
+          {resultItems.length === 0 ? (
+            <EmptyState title="No results yet" />
+          ) : (
+            <Table
+              dense
+              head={[
+                { key: 'test', label: 'Test' },
+                { key: 'score', label: 'Score', align: 'right' },
+                { key: 'outcome', label: 'Outcome' },
+                { key: 'when', label: 'Submitted' },
+              ]}
+            >
+              {resultItems.slice(0, 6).map((result) => (
+                <tr key={result.id}>
+                  <td>
+                    <Link className="link" to={`/student/results/${result.id}`}>
+                      {result.test.title}
+                    </Link>
+                  </td>
+                  <td className="tabular text-right">
+                    {result.score === null ? '—' : `${result.score}/${result.test.totalMarks}`}
+                  </td>
+                  <td>
+                    {result.passed === null ? (
+                      <Badge tone="caution">Pending</Badge>
+                    ) : (
+                      <Badge tone={result.passed ? 'positive' : 'critical'}>
+                        {result.passed ? 'Passed' : 'Failed'}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="text-ink-muted">{formatDate(result.submittedAt)}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </Panel>
+
+        <Panel
+          title="Course progress"
+          action={
+            <Link className="link text-sm" to="/my-courses">
+              My courses
+            </Link>
+          }
+        >
+          {enrollments.length === 0 ? (
+            <EmptyState
+              title="Not enrolled in anything yet"
+              description="Browse the catalogue to enrol in a course."
+              action={
+                <Button as={Link} to="/courses">
+                  Browse courses
+                </Button>
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-line">
+              {enrollments.slice(0, 5).map((enrollment) => {
+                // The enrolment payload carries no completion figure, so use the
+                // analytics breakdown when it is available and fall back to counts.
+                const percentage = progressByCourse.get(enrollment.courseId);
+                const name = enrollment.course?.name ?? 'Course';
+                return (
+                  <li key={enrollment.id} className="py-2.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <Link className="link truncate text-sm font-medium" to={`/courses/${enrollment.courseId}`}>
+                        {name}
+                      </Link>
+                      <span className="tabular shrink-0 text-xs text-ink-muted">
+                        {percentage === undefined
+                          ? `${formatNumber(enrollment.course?._count?.modules ?? 0)} modules`
+                          : formatPercent(percentage)}
+                      </span>
+                    </div>
+                    {percentage === undefined ? (
+                      <p className="text-xs text-ink-subtle">
+                        {formatNumber(enrollment.course?._count?.tests ?? 0)} tests ·{' '}
+                        {formatNumber(enrollment.course?._count?.assignments ?? 0)} assignments
+                      </p>
+                    ) : (
+                      <ProgressBar value={percentage} max={100} tone="accent" label={`${name} progress`} />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
+      {upcomingAssignments.length > 0 && (
+        <Panel
+          title="Assignments due soon"
+          action={
+            <Link className="link text-sm" to="/student/assignments">
+              All assignments
+            </Link>
+          }
+        >
+          <Table
+            dense
+            head={[
+              { key: 'title', label: 'Assignment' },
+              { key: 'course', label: 'Course' },
+              { key: 'marks', label: 'Marks', align: 'right' },
+              { key: 'due', label: 'Due' },
+            ]}
+          >
+            {upcomingAssignments.map((assignment) => (
+              <tr key={assignment.id}>
+                <td className="font-medium text-ink">{assignment.title}</td>
+                <td className="text-ink-muted">{assignment.course?.name ?? '—'}</td>
+                <td className="tabular text-right">{formatNumber(assignment.maxMarks ?? 0)}</td>
+                <td className="text-ink-muted">{formatRelative(assignment.dueAt)}</td>
+              </tr>
+            ))}
+          </Table>
+        </Panel>
+      )}
     </div>
   );
 }

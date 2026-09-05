@@ -20,10 +20,19 @@ import { codingProblemRouter } from './codingProblem.routes.js';
 import { proctoringRouter } from './proctoring.routes.js';
 import { organizationRouter } from './organization.routes.js';
 import { aiRouter } from './ai.routes.js';
+import { analyticsRouter } from './analytics.routes.js';
+import { healthRouter, versionRouter } from './health.routes.js';
 import { searchRouter } from './search.routes.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/authorize.js';
 import { metricsHandler } from '../monitoring/metrics.js';
+import {
+  aiLimiter,
+  attemptWriteLimiter,
+  codeExecutionLimiter,
+  searchLimiter,
+  uploadLimiter,
+} from '../middleware/rateLimit.js';
 import { listAssignedTests } from '../controllers/attempt.controller.js';
 import { AppError } from '../utils/errors.js';
 
@@ -48,57 +57,23 @@ apiRouter.use('/audit-logs', auditRouter);
 apiRouter.use('/class-batches', classBatchRouter);
 apiRouter.use(lmsRouter);
 apiRouter.use(testSectionRouter);
-apiRouter.use('/files', fileUploadRouter);
-apiRouter.use('/coding-problems', codingProblemRouter);
+apiRouter.use('/files', uploadLimiter, fileUploadRouter);
+apiRouter.use('/coding-problems', codeExecutionLimiter, codingProblemRouter);
 apiRouter.use('/proctoring', proctoringRouter);
 apiRouter.use('/organizations', organizationRouter);
-apiRouter.use('/ai', aiRouter);
-apiRouter.use('/search', searchRouter);
+apiRouter.use('/ai', aiLimiter, aiRouter);
+apiRouter.use('/search', searchLimiter, searchRouter);
+apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/certificates', certificateRouter);
 apiRouter.use('/leaderboards', leaderboardRouter);
 // Student attempt routes must precede testRouter so GET /tests/assigned and
 // POST /tests/:testId/start are not shadowed by GET /tests/:id.
-apiRouter.use(attemptRouter);
+apiRouter.use(attemptWriteLimiter, attemptRouter);
 apiRouter.use('/tests', testRouter);
 apiRouter.use('/results', resultRouter);
 
-apiRouter.get('/health', async (_req, res) => {
-  let dbStatus = 'ok';
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-  } catch {
-    dbStatus = 'error';
-  }
-  res.json({
-    success: true,
-    data: {
-      status: dbStatus === 'ok' ? 'ok' : 'degraded',
-      db: dbStatus,
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-    },
-  });
-});
-
-apiRouter.get('/health/db', async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ success: true, data: { status: 'ok' } });
-  } catch {
-    res.status(503).json({ success: false, data: { status: 'error' } });
-  }
-});
-
-apiRouter.get('/health/ai', (_req, res) => {
-  const aiConfigured = !!process.env.OPENAI_API_KEY;
-  res.json({
-    success: true,
-    data: {
-      status: aiConfigured ? 'configured' : 'not-configured',
-      url: process.env.AI_SERVICE_URL ?? 'http://localhost:8000',
-    },
-  });
-});
+apiRouter.use('/health', healthRouter);
+apiRouter.use('/version', versionRouter);
 
 // Prometheus metrics
 apiRouter.get('/metrics', metricsHandler);
