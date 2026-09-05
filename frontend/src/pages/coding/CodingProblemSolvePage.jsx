@@ -54,11 +54,11 @@ export function CodingProblemSolvePage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{problem.title}</h1>
+          <h1 className="text-2xl font-bold text-ink">{problem.title}</h1>
           <div className="mt-2 flex flex-wrap gap-2">
             <Badge tone={problem.difficulty === 'EASY' ? 'green' : problem.difficulty === 'MEDIUM' ? 'amber' : 'red'}>{problem.difficulty}</Badge>
             <Badge tone="blue">{language}</Badge>
-            <span className="text-xs text-slate-400">{(problem.timeLimitMs / 1000).toFixed(1)}s limit</span>
+            <span className="text-xs text-ink-subtle">{(problem.timeLimitMs / 1000).toFixed(1)}s limit</span>
           </div>
         </div>
         <select className="input w-40" value={language} onChange={(e) => setLanguage(e.target.value)}>
@@ -66,19 +66,19 @@ export function CodingProblemSolvePage() {
         </select>
       </div>
 
-      <p className="text-slate-600">{problem.description}</p>
+      <p className="text-ink-muted">{problem.description}</p>
 
       {sample && (
-        <div className="rounded-lg border border-slate-200 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Sample Test Case</p>
-          <pre className="mt-2 rounded bg-slate-50 p-3 text-sm whitespace-pre-wrap"><code>{`Input:\n${sample.input || ''}\nExpected output:\n${sample.expectedOutput}`}</code></pre>
+        <div className="rounded-lg border border-line p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">Sample Test Case</p>
+          <pre className="mt-2 rounded bg-canvas p-3 text-sm whitespace-pre-wrap"><code>{`Input:\n${sample.input || ''}\nExpected output:\n${sample.expectedOutput}`}</code></pre>
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-700">Solution</p>
+            <p className="text-sm font-semibold text-ink">Solution</p>
             <div className="flex gap-2">
               <button onClick={() => setCode(defaultCode)} disabled={running} className="btn btn-secondary px-3 py-1.5">Reset</button>
               <button onClick={runCode} disabled={running} className="btn btn-primary px-3 py-1.5">
@@ -86,7 +86,7 @@ export function CodingProblemSolvePage() {
               </button>
             </div>
           </div>
-          <div className="overflow-hidden rounded-lg border border-slate-700 bg-[#1e2421]">
+          <div className="overflow-hidden rounded-lg border border-line-strong bg-ink">
             <Editor
               height="420px"
               language={editorLanguage[language] ?? language}
@@ -97,18 +97,18 @@ export function CodingProblemSolvePage() {
             />
           </div>
           {result && (
-            <div className={`mt-3 rounded-lg border p-4 ${passed ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
-              <p className={`text-sm font-semibold ${passed ? 'text-emerald-700' : 'text-red-700'}`}>
+            <div className={`mt-3 rounded-lg border p-4 ${passed ? 'border-positive/30 bg-positive-soft' : 'border-critical/30 bg-critical-soft'}`}>
+              <p className={`text-sm font-semibold ${passed ? 'text-positive-ink' : 'text-critical-ink'}`}>
                 {result.status} — {result.passedCount}/{result.totalCount} passed
               </p>
               {result.executionTime != null && (
-                <p className="mt-1 text-xs text-slate-500">Execution time: {result.executionTime}ms</p>
+                <p className="mt-1 text-xs text-ink-muted">Execution time: {result.executionTime}ms</p>
               )}
-              {result.error && <pre className="mt-2 text-xs whitespace-pre-wrap text-red-600">{result.error}</pre>}
+              {result.error && <pre className="mt-2 text-xs whitespace-pre-wrap text-critical-ink">{result.error}</pre>}
               {Array.isArray(result.results) && result.results.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {result.results.map((r, i) => (
-                    <div key={i} className={`rounded px-3 py-2 text-xs ${r.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                    <div key={i} className={`rounded px-3 py-2 text-xs ${r.passed ? 'bg-positive-soft text-positive-ink' : 'bg-critical-soft text-critical-ink'}`}>
                       <span className="font-semibold">Case #{i + 1}: {r.passed ? 'Passed' : 'Failed'}</span>
                       {!r.passed && (
                         <pre className="mt-1 whitespace-pre-wrap"><code>expected: {r.expected}\nactual:   {r.actual}</code></pre>
@@ -122,16 +122,16 @@ export function CodingProblemSolvePage() {
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-semibold text-slate-700">Submission History</p>
+          <p className="mb-2 text-sm font-semibold text-ink">Submission History</p>
           {submissions.length === 0 ? (
-            <p className="text-sm text-slate-400">No submissions yet.</p>
+            <p className="text-sm text-ink-subtle">No submissions yet.</p>
           ) : (
             <div className="space-y-2">
               {submissions.map((s) => (
                 <div key={s.id} className="card flex items-center justify-between p-4">
                   <div>
-                    <p className="text-sm font-medium text-slate-800">{s.language}</p>
-                    <p className="text-xs text-slate-400">{new Date(s.createdAt).toLocaleString()}</p>
+                    <p className="text-sm font-medium text-ink">{s.language}</p>
+                    <p className="text-xs text-ink-subtle">{new Date(s.createdAt).toLocaleString()}</p>
                   </div>
                   <Badge tone={s.status === 'ACCEPTED' ? 'green' : s.status === 'ERROR' ? 'red' : 'amber'}>
                     {s.status}

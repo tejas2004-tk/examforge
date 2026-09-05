@@ -67,16 +67,16 @@ export function CoursesPage() {
             <div key={c.id} className="card">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900">{c.name}</h3>
-                  <p className="text-xs font-medium text-brand-600">{c.code}</p>
+                  <h3 className="text-base font-semibold text-ink">{c.name}</h3>
+                  <p className="text-xs font-medium text-accent">{c.code}</p>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => openEdit(c)} className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100">Edit</button>
-                  <button onClick={() => remove(c)} className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Delete</button>
+                  <button onClick={() => openEdit(c)} className="rounded px-2 py-1 text-xs font-medium text-ink-muted hover:bg-canvas">Edit</button>
+                  <button onClick={() => remove(c)} className="rounded px-2 py-1 text-xs font-medium text-critical-ink hover:bg-critical-soft">Delete</button>
                 </div>
               </div>
-              <p className="mt-2 text-sm text-slate-600">{c.description || 'No description'}</p>
-              <p className="mt-3 text-xs text-slate-400">
+              <p className="mt-2 text-sm text-ink-muted">{c.description || 'No description'}</p>
+              <p className="mt-3 text-xs text-ink-subtle">
                 {c._count?.tests ?? 0} tests · {c._count?.classBatches ?? 0} classes
               </p>
             </div>

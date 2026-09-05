@@ -2,29 +2,178 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Palette. Values are bare "R G B" triplets so Tailwind can apply opacity
+ * modifiers (see tailwind.config.js). Light is the base; .dark overrides only
+ * the tokens that actually change, which keeps the two themes from drifting.
+ */
 @layer base {
+  :root {
+    --canvas: 248 249 251;
+    --surface: 255 255 255;
+    --surface-raised: 255 255 255;
+
+    --line: 228 231 237;
+    --line-strong: 210 214 222;
+
+    --ink: 20 24 33;
+    --ink-muted: 90 98 112;
+    --ink-subtle: 138 146 160;
+
+    --accent: 67 84 214;
+    --accent-hover: 54 68 190;
+    --accent-soft: 236 238 253;
+    --accent-ink: 52 65 190;
+
+    --positive: 22 137 92;
+    --positive-soft: 226 246 236;
+    --positive-ink: 15 106 71;
+
+    --caution: 189 126 15;
+    --caution-soft: 253 243 220;
+    --caution-ink: 146 95 8;
+
+    --critical: 205 51 62;
+    --critical-soft: 253 233 234;
+    --critical-ink: 168 36 47;
+
+    --shadow: 15 23 42;
+
+    /* Always-dark surface for the marketing/auth panel. Deliberately NOT
+       redefined under .dark: the panel must stay dark in both themes. */
+    --panel: 13 16 23;
+    --panel-ink: 240 242 247;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --canvas: 13 16 23;
+    --surface: 21 25 34;
+    --surface-raised: 28 33 44;
+
+    --line: 40 46 60;
+    --line-strong: 57 65 82;
+
+    --ink: 233 236 242;
+    --ink-muted: 154 162 178;
+    --ink-subtle: 116 124 140;
+
+    --accent: 129 140 248;
+    --accent-hover: 149 158 250;
+    --accent-soft: 33 38 66;
+    --accent-ink: 175 183 252;
+
+    --positive: 52 190 132;
+    --positive-soft: 17 46 36;
+    --positive-ink: 110 224 173;
+
+    --caution: 226 165 51;
+    --caution-soft: 52 40 15;
+    --caution-ink: 246 196 106;
+
+    --critical: 242 105 115;
+    --critical-soft: 57 25 29;
+    --critical-ink: 250 154 161;
+
+    --shadow: 0 0 0;
+
+    color-scheme: dark;
+  }
+
+  * {
+    border-color: rgb(var(--line));
+  }
+
   body {
-    @apply bg-[#f5f7f5] text-slate-800 antialiased;
+    @apply bg-canvas text-ink antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Numbers in tables and stat tiles must not jitter as values change. */
+  .tabular,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/55 ring-offset-2 ring-offset-canvas;
+  }
+
+  ::selection {
+    @apply bg-accent/20;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg
+           text-sm font-medium transition-[background-color,border-color,color,box-shadow,transform]
+           duration-150 active:translate-y-px
+           disabled:pointer-events-none disabled:opacity-45;
   }
-  .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500;
-  }
-  .btn-secondary {
-    @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus:ring-slate-400;
-  }
+  .btn-sm { @apply h-8 px-2.5 text-[0.8125rem]; }
+  .btn-md { @apply h-9 px-3.5; }
+  .btn-lg { @apply h-11 px-5 text-[0.9375rem]; }
+
+  .btn-primary  { @apply btn bg-accent text-white shadow-card hover:bg-accent-hover; }
+  .btn-secondary{ @apply btn border border-line-strong bg-surface text-ink shadow-card hover:border-ink-subtle hover:bg-canvas; }
+  .btn-ghost    { @apply btn text-ink-muted hover:bg-accent-soft hover:text-accent-ink; }
+  .btn-danger   { @apply btn bg-critical text-white shadow-card hover:brightness-95; }
+
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm placeholder-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30;
+    @apply h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm text-ink
+           shadow-[inset_0_1px_1px_rgb(var(--shadow)/0.03)] transition-colors
+           placeholder:text-ink-subtle
+           focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25
+           disabled:bg-canvas disabled:text-ink-subtle;
   }
-  .label {
-    @apply mb-1 block text-sm font-medium text-slate-700;
-  }
+  textarea.input { @apply h-auto py-2 leading-relaxed; }
+  select.input   { @apply pr-8; }
+
+  .label { @apply mb-1.5 block text-[0.8125rem] font-medium text-ink; }
+
   .card {
-    @apply rounded-xl border border-slate-200 bg-white p-6 shadow-sm;
+    @apply rounded-xl border border-line bg-surface shadow-card;
+  }
+  .card-pad { @apply card p-5; }
+
+  /* Section eyebrow used above panel content. */
+  .eyebrow { @apply text-eyebrow uppercase text-ink-subtle; }
+
+  .link { @apply font-medium text-accent underline-offset-4 transition-colors hover:text-accent-hover hover:underline; }
+
+  .table-shell { @apply w-full overflow-x-auto; }
+  .table-base  { @apply w-full min-w-[36rem] border-collapse text-sm; }
+  .table-base thead th {
+    @apply border-b border-line bg-canvas px-4 py-2.5 text-left text-eyebrow uppercase text-ink-subtle;
+  }
+  .table-base tbody td { @apply border-b border-line px-4 py-3 text-ink-muted; }
+  .table-base tbody tr:last-child td { @apply border-b-0; }
+  .table-base tbody tr { @apply transition-colors hover:bg-accent-soft/45; }
+}
+
+@layer utilities {
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-strong)) transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--line-strong));
+    border-radius: 9999px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
+}
+
+/* Respect the OS reduced-motion preference for every animation we ship. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

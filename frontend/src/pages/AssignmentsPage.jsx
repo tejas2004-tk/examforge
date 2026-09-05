@@ -87,26 +87,26 @@ export function TeacherAssignmentsPage() {
           {items.map((a) => (
             <div key={a.id} className="card flex flex-col">
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-base font-semibold text-slate-900">{a.title}</h3>
+                <h3 className="text-base font-semibold text-ink">{a.title}</h3>
                 <div className="flex gap-1">
-                  <button onClick={() => openEdit(a)} className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100">Edit</button>
-                  <button onClick={() => remove(a)} className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Delete</button>
+                  <button onClick={() => openEdit(a)} className="rounded px-2 py-1 text-xs font-medium text-ink-muted hover:bg-canvas">Edit</button>
+                  <button onClick={() => remove(a)} className="rounded px-2 py-1 text-xs font-medium text-critical-ink hover:bg-critical-soft">Delete</button>
                 </div>
               </div>
-              {a.course && <p className="mt-1 text-xs text-slate-500">{a.course.name}</p>}
-              <p className="mt-2 flex-1 text-sm text-slate-600 line-clamp-2">{a.description || 'No description'}</p>
+              {a.course && <p className="mt-1 text-xs text-ink-muted">{a.course.name}</p>}
+              <p className="mt-2 flex-1 text-sm text-ink-muted line-clamp-2">{a.description || 'No description'}</p>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <dt className="text-xs text-slate-400">Max marks</dt>
-                  <dd className="font-medium text-slate-700">{a.maxMarks}</dd>
+                  <dt className="text-xs text-ink-subtle">Max marks</dt>
+                  <dd className="font-medium text-ink">{a.maxMarks}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-slate-400">Submissions</dt>
-                  <dd className="font-medium text-slate-700">{a._count?.submissions ?? 0}</dd>
+                  <dt className="text-xs text-ink-subtle">Submissions</dt>
+                  <dd className="font-medium text-ink">{a._count?.submissions ?? 0}</dd>
                 </div>
               </dl>
               {a.dueAt && (
-                <p className="mt-3 text-xs text-slate-500">
+                <p className="mt-3 text-xs text-ink-muted">
                   Due: {new Date(a.dueAt).toLocaleDateString()}
                 </p>
               )}
@@ -200,29 +200,29 @@ export function StudentAssignmentsPage() {
           {items.map((a) => (
             <div key={a.id} className="card flex flex-col">
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-base font-semibold text-slate-900">{a.title}</h3>
+                <h3 className="text-base font-semibold text-ink">{a.title}</h3>
                 {a._count?.submissions > 0 ? (
                   <Badge tone="green">Submitted</Badge>
                 ) : (
                   <Badge tone="amber">Pending</Badge>
                 )}
               </div>
-              {a.course && <p className="mt-1 text-xs text-slate-500">{a.course.name}</p>}
-              <p className="mt-2 flex-1 text-sm text-slate-600 line-clamp-2">{a.description || 'No description'}</p>
+              {a.course && <p className="mt-1 text-xs text-ink-muted">{a.course.name}</p>}
+              <p className="mt-2 flex-1 text-sm text-ink-muted line-clamp-2">{a.description || 'No description'}</p>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <dt className="text-xs text-slate-400">Max marks</dt>
-                  <dd className="font-medium text-slate-700">{a.maxMarks}</dd>
+                  <dt className="text-xs text-ink-subtle">Max marks</dt>
+                  <dd className="font-medium text-ink">{a.maxMarks}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-slate-400">Created by</dt>
-                  <dd className="font-medium text-slate-700">{a.createdBy?.fullName ?? 'Teacher'}</dd>
+                  <dt className="text-xs text-ink-subtle">Created by</dt>
+                  <dd className="font-medium text-ink">{a.createdBy?.fullName ?? 'Teacher'}</dd>
                 </div>
               </dl>
               {a.dueAt && (
-                <p className="mt-3 text-xs text-slate-500">
+                <p className="mt-3 text-xs text-ink-muted">
                   Due: {new Date(a.dueAt).toLocaleDateString()}
-                  {new Date(a.dueAt) < new Date() && <span className="ml-2 font-medium text-red-600">Overdue</span>}
+                  {new Date(a.dueAt) < new Date() && <span className="ml-2 font-medium text-critical-ink">Overdue</span>}
                 </p>
               )}
               <div className="mt-4 flex-1" />
@@ -237,15 +237,15 @@ export function StudentAssignmentsPage() {
       <Modal open={Boolean(activeAssignment)} onClose={() => setActiveAssignment(null)} title={activeAssignment?.title} width="max-w-2xl">
         {activeAssignment && (
           <div className="space-y-4">
-            <p className="text-sm text-slate-600">{activeAssignment.description}</p>
+            <p className="text-sm text-ink-muted">{activeAssignment.description}</p>
             {activeAssignment.dueAt && (
-              <p className="text-xs text-slate-500">Due: {new Date(activeAssignment.dueAt).toLocaleString()}</p>
+              <p className="text-xs text-ink-muted">Due: {new Date(activeAssignment.dueAt).toLocaleString()}</p>
             )}
 
             {activeAssignment.mySubmission && (
-              <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+              <div className="rounded-lg bg-positive-soft p-3 text-sm text-positive-ink">
                 <p className="font-semibold">Previous submission</p>
-                <p className="mt-1 text-xs text-emerald-600">
+                <p className="mt-1 text-xs text-positive-ink">
                   Submitted: {new Date(activeAssignment.mySubmission.submittedAt).toLocaleString()}
                   {activeAssignment.mySubmission.marks !== null && ` · Marks: ${activeAssignment.mySubmission.marks}/${activeAssignment.maxMarks}`}
                 </p>

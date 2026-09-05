@@ -70,8 +70,8 @@ export function ProctoringDashboard() {
           <div key={s.id} className="card p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-semibold text-slate-900">{s.student?.fullName || s.studentId}</p>
-                <p className="text-sm text-slate-500">
+                <p className="font-semibold text-ink">{s.student?.fullName || s.studentId}</p>
+                <p className="text-sm text-ink-muted">
                   {s.test?.title || 'Unknown test'} · Started {new Date(s.startedAt).toLocaleTimeString()}
                 </p>
               </div>
@@ -84,11 +84,11 @@ export function ProctoringDashboard() {
             </div>
 
             {s.lastEvent && (
-              <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-                <span className="font-medium text-slate-700">Last event: </span>
+              <div className="mt-3 rounded-lg bg-canvas p-3 text-sm text-ink-muted">
+                <span className="font-medium text-ink">Last event: </span>
                 {s.lastEvent.type}
-                <span className="text-slate-400"> — {new Date(s.lastEvent.createdAt).toLocaleTimeString()}</span>
-                {s.lastEvent.details && <span className="block text-xs text-slate-500">{JSON.stringify(s.lastEvent.details)}</span>}
+                <span className="text-ink-subtle"> — {new Date(s.lastEvent.createdAt).toLocaleTimeString()}</span>
+                {s.lastEvent.details && <span className="block text-xs text-ink-muted">{JSON.stringify(s.lastEvent.details)}</span>}
               </div>
             )}
 
@@ -105,14 +105,14 @@ export function ProctoringDashboard() {
 
 function StatCard({ label, value, tone = 'slate' }) {
   const tones = {
-    slate: 'text-slate-900',
-    red: 'text-red-600',
-    amber: 'text-amber-600',
+    slate: 'text-ink',
+    red: 'text-critical-ink',
+    amber: 'text-caution-ink',
   };
   return (
     <div className="card p-5">
       <p className={`text-3xl font-bold ${tones[tone]}`}>{value}</p>
-      <p className="mt-1 text-sm text-slate-500">{label}</p>
+      <p className="mt-1 text-sm text-ink-muted">{label}</p>
     </div>
   );
 }

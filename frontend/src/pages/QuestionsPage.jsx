@@ -129,7 +129,7 @@ export function QuestionsPage() {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="pb-3 pr-4 font-medium">Question</th>
                 <th className="pb-3 pr-4 font-medium">Type</th>
                 <th className="pb-3 pr-4 font-medium">Difficulty</th>
@@ -138,21 +138,21 @@ export function QuestionsPage() {
                 <th className="pb-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {items.map((q) => (
                 <tr key={q.id}>
                   <td className="max-w-[320px] py-3 pr-4">
-                    <p className="truncate font-medium text-slate-900">{q.text}</p>
+                    <p className="truncate font-medium text-ink">{q.text}</p>
                   </td>
                   <td className="py-3 pr-4"><Badge tone="blue">{q.type}</Badge></td>
-                  <td className="py-3 pr-4 text-slate-600">{q.difficulty}</td>
-                  <td className="py-3 pr-4 font-semibold text-slate-900">{q.marks}</td>
-                  <td className="py-3 pr-4 text-xs text-slate-500">
+                  <td className="py-3 pr-4 text-ink-muted">{q.difficulty}</td>
+                  <td className="py-3 pr-4 font-semibold text-ink">{q.marks}</td>
+                  <td className="py-3 pr-4 text-xs text-ink-muted">
                     {optionTypes.includes(q.type) ? `${q.options?.filter((o) => o.isCorrect).length ?? 0} correct` : (q.type === 'FILL_BLANK' ? String(q.correctAnswer ?? '') : 'Manual')}
                   </td>
                   <td className="py-3 text-right">
-                    <button onClick={() => openEdit(q)} className="mr-2 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100">Edit</button>
-                    <button onClick={() => remove(q)} className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Delete</button>
+                    <button onClick={() => openEdit(q)} className="mr-2 rounded px-2 py-1 text-xs font-medium text-ink-muted hover:bg-canvas">Edit</button>
+                    <button onClick={() => remove(q)} className="rounded px-2 py-1 text-xs font-medium text-critical-ink hover:bg-critical-soft">Delete</button>
                   </td>
                 </tr>
               ))}
@@ -198,7 +198,7 @@ export function QuestionsPage() {
                       type="checkbox"
                       checked={o.isCorrect}
                       onChange={(e) => updateOption(i, { isCorrect: e.target.checked })}
-                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                      className="h-4 w-4 rounded border-line-strong text-accent focus:ring-accent/25"
                     />
                     <input
                       className="input"
@@ -209,7 +209,7 @@ export function QuestionsPage() {
                     <button
                       type="button"
                       onClick={() => setForm({ ...form, options: form.options.filter((_, idx) => idx !== i) })}
-                      className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                      className="rounded px-2 py-1 text-xs text-critical-ink hover:bg-critical-soft"
                     >
                       Remove
                     </button>
@@ -219,7 +219,7 @@ export function QuestionsPage() {
               <button
                 type="button"
                 onClick={() => setForm({ ...form, options: [...form.options, { text: '', isCorrect: false }] })}
-                className="mt-2 text-sm font-medium text-brand-600 hover:text-brand-700"
+                className="mt-2 text-sm font-medium text-accent hover:text-accent"
               >
                 + Add option
               </button>

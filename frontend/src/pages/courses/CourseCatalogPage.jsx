@@ -50,12 +50,12 @@ export function CourseCatalogPage() {
             <div key={c.id} className="card flex flex-col">
               <div className="flex-1">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-lg font-semibold text-slate-900">{c.name}</h3>
+                  <h3 className="text-lg font-semibold text-ink">{c.name}</h3>
                   <Badge tone="blue">{c.code}</Badge>
                 </div>
-                {c.description && <p className="mt-2 text-sm text-slate-600 line-clamp-3">{c.description}</p>}
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                  {c.category && <span className="rounded-full bg-slate-100 px-2 py-0.5">{c.category}</span>}
+                {c.description && <p className="mt-2 text-sm text-ink-muted line-clamp-3">{c.description}</p>}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-ink-muted">
+                  {c.category && <span className="rounded-full bg-canvas px-2 py-0.5">{c.category}</span>}
                   {c._count && (
                     <>
                       <span>{c._count.modules ?? 0} modules</span>

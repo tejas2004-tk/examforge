@@ -118,18 +118,18 @@ export function CodingProblemsPage() {
         {items.map((p) => (
           <div key={p.id} className="card p-5">
             <div className="flex items-start justify-between">
-              <h3 className="font-semibold text-slate-900">{p.title}</h3>
+              <h3 className="font-semibold text-ink">{p.title}</h3>
               <Badge tone={p.difficulty === 'EASY' ? 'green' : p.difficulty === 'MEDIUM' ? 'amber' : 'red'}>
                 {p.difficulty}
               </Badge>
             </div>
-            <p className="mt-1 line-clamp-2 text-sm text-slate-500">{p.description}</p>
+            <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{p.description}</p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {(Array.isArray(p.allowedLanguages) ? p.allowedLanguages : JSON.parse(p.allowedLanguages || '[]')).map((l) => (
-                <span key={l} className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{l}</span>
+                <span key={l} className="rounded bg-canvas px-1.5 py-0.5 text-xs text-ink-muted">{l}</span>
               ))}
             </div>
-            <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+            <div className="mt-4 flex items-center justify-between text-xs text-ink-subtle">
               <span>{p.testCases?.length ?? 0} test cases</span>
               <span>{(p.timeLimitMs / 1000).toFixed(1)}s limit</span>
             </div>
@@ -143,7 +143,7 @@ export function CodingProblemsPage() {
 
       <Modal open={Boolean(modal)} onClose={() => setModal(null)} title={modal === 'create' ? 'New Coding Problem' : 'Edit Coding Problem'} width="max-w-2xl">
         <div className="space-y-4">
-          {formError && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>}
+          {formError && <div className="rounded-lg bg-critical-soft px-3 py-2 text-sm text-critical-ink">{formError}</div>}
           <Field label="Title">
             <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
@@ -176,10 +176,10 @@ export function CodingProblemsPage() {
             <p className="label">Test Cases</p>
             <div className="space-y-2">
               {form.testCases.map((tc, i) => (
-                <div key={i} className="rounded-lg border border-slate-200 p-3">
+                <div key={i} className="rounded-lg border border-line p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">Case #{i + 1}</span>
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
+                    <span className="text-xs font-medium text-ink-muted">Case #{i + 1}</span>
+                    <label className="flex items-center gap-1 text-xs text-ink-muted">
                       <input type="checkbox" checked={tc.isPublic} onChange={(e) => setTestCase(i, { isPublic: e.target.checked })} />
                       Public
                     </label>
@@ -188,7 +188,7 @@ export function CodingProblemsPage() {
                     <input className="input" placeholder="Input" value={tc.input} onChange={(e) => setTestCase(i, { input: e.target.value })} />
                     <input className="input" placeholder="Expected output" value={tc.expectedOutput} onChange={(e) => setTestCase(i, { expectedOutput: e.target.value })} />
                   </div>
-                  <button className="mt-2 text-xs text-red-600 hover:underline" onClick={() => setForm((f) => ({ ...f, testCases: f.testCases.filter((_, j) => j !== i) }))}>
+                  <button className="mt-2 text-xs text-critical-ink hover:underline" onClick={() => setForm((f) => ({ ...f, testCases: f.testCases.filter((_, j) => j !== i) }))}>
                     Remove
                   </button>
                 </div>

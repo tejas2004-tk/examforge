@@ -1,52 +1,63 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore.js';
 import { AppLayout } from '../layouts/AppLayout.jsx';
 import { AuthLayout } from '../layouts/AuthLayout.jsx';
+import { HomePage } from '../pages/HomePage.jsx';
+import { Spinner } from '../components/ui.jsx';
+
+// Auth screens stay in the entry chunk: they are the first paint for signed-out
+// visitors, so lazy-loading them would only add a spinner before the login box.
 import { LoginPage } from '../pages/auth/LoginPage.jsx';
 import { RegisterPage } from '../pages/auth/RegisterPage.jsx';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage.jsx';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage.jsx';
 import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage.jsx';
-import { HomePage } from '../pages/HomePage.jsx';
 import { NotFoundPage } from '../pages/NotFoundPage.jsx';
-import { ProfilePage } from '../pages/ProfilePage.jsx';
-import { NotificationsPage } from '../pages/NotificationsPage.jsx';
-import { CoursesPage } from '../pages/CoursesPage.jsx';
-import { QuestionsPage } from '../pages/QuestionsPage.jsx';
-import { QuestionBanksPage } from '../pages/QuestionBanksPage.jsx';
-import { TestsPage } from '../pages/TestsPage.jsx';
-import { TestDetailPage } from '../pages/TestDetailPage.jsx';
-import { TeacherResults } from '../pages/TeacherResults.jsx';
-import { TeacherResultDetail } from '../pages/TeacherResultDetail.jsx';
-import { TeacherAssignmentsPage } from '../pages/AssignmentsPage.jsx';
-import { StudentAssignmentsPage } from '../pages/AssignmentsPage.jsx';
-import { ClassBatchesPage } from '../pages/ClassBatchesPage.jsx';
-import { CourseCatalogPage } from '../pages/courses/CourseCatalogPage.jsx';
-import { CourseDetailPage } from '../pages/courses/CourseDetailPage.jsx';
-import { LessonPage } from '../pages/courses/LessonPage.jsx';
-import { MyCoursesPage } from '../pages/courses/MyCoursesPage.jsx';
-import { UsersPage } from '../pages/UsersPage.jsx';
-import { StudentDashboard } from '../pages/student/StudentDashboard.jsx';
-import { MyTests } from '../pages/student/MyTests.jsx';
-import { ExamPage } from '../pages/student/ExamPage.jsx';
-import { StudentResults } from '../pages/student/StudentResults.jsx';
-import { StudentResultDetail } from '../pages/student/StudentResultDetail.jsx';
-import { TeacherDashboard } from '../pages/teacher/TeacherDashboard.jsx';
-import { AdminDashboard } from '../pages/admin/AdminDashboard.jsx';
-import { AdminTestsPage } from '../pages/admin/AdminTestsPage.jsx';
-import { AdminTestDetailPage } from '../pages/admin/AdminTestDetailPage.jsx';
-import { AdminResultsPage } from '../pages/admin/AdminResultsPage.jsx';
-import { AdminResultDetailPage } from '../pages/admin/AdminResultDetailPage.jsx';
-import { AdminAuditPage } from '../pages/admin/AdminAuditPage.jsx';
 
-import { CodingProblemsPage } from '../pages/coding/CodingProblemsPage.jsx';
-import { StudentCodingProblemsPage } from '../pages/coding/StudentCodingProblemsPage.jsx';
-import { CodingProblemSolvePage } from '../pages/coding/CodingProblemSolvePage.jsx';
-import { ProctoringDashboard } from '../pages/proctoring/ProctoringDashboard.jsx';
-import { AiAssistantPage } from '../pages/ai/AiAssistantPage.jsx';
-import { SearchResultsPage } from '../pages/search/SearchResultsPage.jsx';
-import { OrganizationsPage } from '../pages/organizations/OrganizationsPage.jsx';
-import { Spinner } from '../components/ui.jsx';
+/**
+ * The pages use named exports, while React.lazy expects a module with a
+ * `default`. This adapts one to the other so the app can be code-split without
+ * rewriting every page's export style.
+ */
+const page = (loader, name) => lazy(() => loader().then((m) => ({ default: m[name] })));
+
+const ProfilePage = page(() => import('../pages/ProfilePage.jsx'), 'ProfilePage');
+const NotificationsPage = page(() => import('../pages/NotificationsPage.jsx'), 'NotificationsPage');
+const CoursesPage = page(() => import('../pages/CoursesPage.jsx'), 'CoursesPage');
+const QuestionsPage = page(() => import('../pages/QuestionsPage.jsx'), 'QuestionsPage');
+const QuestionBanksPage = page(() => import('../pages/QuestionBanksPage.jsx'), 'QuestionBanksPage');
+const TestsPage = page(() => import('../pages/TestsPage.jsx'), 'TestsPage');
+const TestDetailPage = page(() => import('../pages/TestDetailPage.jsx'), 'TestDetailPage');
+const TeacherResults = page(() => import('../pages/TeacherResults.jsx'), 'TeacherResults');
+const TeacherResultDetail = page(() => import('../pages/TeacherResultDetail.jsx'), 'TeacherResultDetail');
+const TeacherAssignmentsPage = page(() => import('../pages/AssignmentsPage.jsx'), 'TeacherAssignmentsPage');
+const StudentAssignmentsPage = page(() => import('../pages/AssignmentsPage.jsx'), 'StudentAssignmentsPage');
+const ClassBatchesPage = page(() => import('../pages/ClassBatchesPage.jsx'), 'ClassBatchesPage');
+const CourseCatalogPage = page(() => import('../pages/courses/CourseCatalogPage.jsx'), 'CourseCatalogPage');
+const CourseDetailPage = page(() => import('../pages/courses/CourseDetailPage.jsx'), 'CourseDetailPage');
+const LessonPage = page(() => import('../pages/courses/LessonPage.jsx'), 'LessonPage');
+const MyCoursesPage = page(() => import('../pages/courses/MyCoursesPage.jsx'), 'MyCoursesPage');
+const UsersPage = page(() => import('../pages/UsersPage.jsx'), 'UsersPage');
+const StudentDashboard = page(() => import('../pages/student/StudentDashboard.jsx'), 'StudentDashboard');
+const MyTests = page(() => import('../pages/student/MyTests.jsx'), 'MyTests');
+const ExamPage = page(() => import('../pages/student/ExamPage.jsx'), 'ExamPage');
+const StudentResults = page(() => import('../pages/student/StudentResults.jsx'), 'StudentResults');
+const StudentResultDetail = page(() => import('../pages/student/StudentResultDetail.jsx'), 'StudentResultDetail');
+const TeacherDashboard = page(() => import('../pages/teacher/TeacherDashboard.jsx'), 'TeacherDashboard');
+const AdminDashboard = page(() => import('../pages/admin/AdminDashboard.jsx'), 'AdminDashboard');
+const AdminTestsPage = page(() => import('../pages/admin/AdminTestsPage.jsx'), 'AdminTestsPage');
+const AdminTestDetailPage = page(() => import('../pages/admin/AdminTestDetailPage.jsx'), 'AdminTestDetailPage');
+const AdminResultsPage = page(() => import('../pages/admin/AdminResultsPage.jsx'), 'AdminResultsPage');
+const AdminResultDetailPage = page(() => import('../pages/admin/AdminResultDetailPage.jsx'), 'AdminResultDetailPage');
+const AdminAuditPage = page(() => import('../pages/admin/AdminAuditPage.jsx'), 'AdminAuditPage');
+const CodingProblemsPage = page(() => import('../pages/coding/CodingProblemsPage.jsx'), 'CodingProblemsPage');
+const StudentCodingProblemsPage = page(() => import('../pages/coding/StudentCodingProblemsPage.jsx'), 'StudentCodingProblemsPage');
+const CodingProblemSolvePage = page(() => import('../pages/coding/CodingProblemSolvePage.jsx'), 'CodingProblemSolvePage');
+const ProctoringDashboard = page(() => import('../pages/proctoring/ProctoringDashboard.jsx'), 'ProctoringDashboard');
+const AiAssistantPage = page(() => import('../pages/ai/AiAssistantPage.jsx'), 'AiAssistantPage');
+const SearchResultsPage = page(() => import('../pages/search/SearchResultsPage.jsx'), 'SearchResultsPage');
+const OrganizationsPage = page(() => import('../pages/organizations/OrganizationsPage.jsx'), 'OrganizationsPage');
 
 export const roleHome = {
   ADMIN: '/admin',
@@ -54,6 +65,15 @@ export const roleHome = {
   STUDENT: '/student',
   PROCTOR: '/proctoring',
 };
+
+const ALL_ROLES = ['ADMIN', 'TEACHER', 'STUDENT', 'PROCTOR'];
+
+/** Wraps an element in the role guard plus the lazy-loading boundary. */
+const guard = (roles, element) => (
+  <ProtectedRoute roles={roles}>
+    <Suspense fallback={<Spinner />}>{element}</Suspense>
+  </ProtectedRoute>
+);
 
 export function AppRoutes() {
   return (
@@ -68,56 +88,63 @@ export function AppRoutes() {
 
       <Route path="/" element={<HomePage />} />
 
-      <Route path="/profile" element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT', 'PROCTOR']}><ProfilePage /></ProtectedRoute>} />
-
       <Route element={<AppLayout />}>
-        <Route path="/courses" element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT', 'PROCTOR']}><CourseCatalogPage /></ProtectedRoute>} />
-        <Route path="/courses/:courseId" element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT', 'PROCTOR']}><CourseDetailPage /></ProtectedRoute>} />
-        <Route path="/my-courses" element={<ProtectedRoute roles={['STUDENT']}><MyCoursesPage /></ProtectedRoute>} />
-        <Route path="/lessons/:lessonId" element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT']}><LessonPage /></ProtectedRoute>} />
-        <Route path="/search" element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT', 'PROCTOR']}><SearchResultsPage /></ProtectedRoute>} />
-        <Route path="/ai-assistant" element={<ProtectedRoute roles={['ADMIN', 'TEACHER', 'STUDENT', 'PROCTOR']}><AiAssistantPage /></ProtectedRoute>} />
+        {/* Profile previously sat outside AppLayout, so it rendered with no
+            sidebar or header and stranded the user with no way back. */}
+        <Route path="/profile" element={guard(ALL_ROLES, <ProfilePage />)} />
 
-        <Route path="/admin" element={<ProtectedRoute roles={['ADMIN']}><AdminDashboard /></ProtectedRoute>} />
-        <Route path="/admin/users" element={<ProtectedRoute roles={['ADMIN']}><UsersPage /></ProtectedRoute>} />
-        <Route path="/admin/courses" element={<ProtectedRoute roles={['ADMIN']}><CoursesPage /></ProtectedRoute>} />
-        <Route path="/admin/class-batches" element={<ProtectedRoute roles={['ADMIN']}><ClassBatchesPage /></ProtectedRoute>} />
-        <Route path="/admin/organizations" element={<ProtectedRoute roles={['ADMIN']}><OrganizationsPage /></ProtectedRoute>} />
-        <Route path="/admin/tests" element={<ProtectedRoute roles={['ADMIN']}><AdminTestsPage /></ProtectedRoute>} />
-        <Route path="/admin/tests/:testId" element={<ProtectedRoute roles={['ADMIN']}><AdminTestDetailPage /></ProtectedRoute>} />
-        <Route path="/admin/coding-problems" element={<ProtectedRoute roles={['ADMIN']}><CodingProblemsPage /></ProtectedRoute>} />
-        <Route path="/admin/assignments" element={<ProtectedRoute roles={['ADMIN']}><TeacherAssignmentsPage /></ProtectedRoute>} />
-        <Route path="/admin/results" element={<ProtectedRoute roles={['ADMIN']}><AdminResultsPage /></ProtectedRoute>} />
-        <Route path="/admin/results/:attemptId" element={<ProtectedRoute roles={['ADMIN']}><AdminResultDetailPage /></ProtectedRoute>} />
-        <Route path="/admin/proctoring" element={<ProtectedRoute roles={['ADMIN']}><ProctoringDashboard /></ProtectedRoute>} />
-        <Route path="/admin/audit" element={<ProtectedRoute roles={['ADMIN']}><AdminAuditPage /></ProtectedRoute>} />
-        <Route path="/admin/notifications" element={<ProtectedRoute roles={['ADMIN']}><NotificationsPage /></ProtectedRoute>} />
+        {/* One canonical notifications route for every role. The header bell used
+            to build `/{role}/notifications`, which 404'd for PROCTOR because no
+            such route was ever declared. */}
+        <Route path="/notifications" element={guard(ALL_ROLES, <NotificationsPage />)} />
+        <Route path="/admin/notifications" element={<Navigate to="/notifications" replace />} />
+        <Route path="/teacher/notifications" element={<Navigate to="/notifications" replace />} />
+        <Route path="/student/notifications" element={<Navigate to="/notifications" replace />} />
 
-        <Route path="/teacher" element={<ProtectedRoute roles={['TEACHER']}><TeacherDashboard /></ProtectedRoute>} />
-        <Route path="/teacher/courses" element={<ProtectedRoute roles={['TEACHER']}><CoursesPage /></ProtectedRoute>} />
-        <Route path="/teacher/class-batches" element={<ProtectedRoute roles={['TEACHER']}><ClassBatchesPage /></ProtectedRoute>} />
-        <Route path="/teacher/questions" element={<ProtectedRoute roles={['TEACHER']}><QuestionsPage /></ProtectedRoute>} />
-        <Route path="/teacher/banks" element={<ProtectedRoute roles={['TEACHER']}><QuestionBanksPage /></ProtectedRoute>} />
-        <Route path="/teacher/tests" element={<ProtectedRoute roles={['TEACHER']}><TestsPage /></ProtectedRoute>} />
-        <Route path="/teacher/tests/:testId" element={<ProtectedRoute roles={['TEACHER']}><TestDetailPage /></ProtectedRoute>} />
-        <Route path="/teacher/coding-problems" element={<ProtectedRoute roles={['TEACHER']}><CodingProblemsPage /></ProtectedRoute>} />
-        <Route path="/teacher/assignments" element={<ProtectedRoute roles={['TEACHER']}><TeacherAssignmentsPage /></ProtectedRoute>} />
-        <Route path="/teacher/results" element={<ProtectedRoute roles={['TEACHER']}><TeacherResults /></ProtectedRoute>} />
-        <Route path="/teacher/results/:attemptId" element={<ProtectedRoute roles={['TEACHER']}><TeacherResultDetail /></ProtectedRoute>} />
-        <Route path="/teacher/proctoring" element={<ProtectedRoute roles={['TEACHER']}><ProctoringDashboard /></ProtectedRoute>} />
-        <Route path="/teacher/notifications" element={<ProtectedRoute roles={['TEACHER']}><NotificationsPage /></ProtectedRoute>} />
+        <Route path="/courses" element={guard(ALL_ROLES, <CourseCatalogPage />)} />
+        <Route path="/courses/:courseId" element={guard(ALL_ROLES, <CourseDetailPage />)} />
+        <Route path="/my-courses" element={guard(['STUDENT'], <MyCoursesPage />)} />
+        <Route path="/lessons/:lessonId" element={guard(['ADMIN', 'TEACHER', 'STUDENT'], <LessonPage />)} />
+        <Route path="/search" element={guard(ALL_ROLES, <SearchResultsPage />)} />
+        <Route path="/ai-assistant" element={guard(ALL_ROLES, <AiAssistantPage />)} />
 
-        <Route path="/proctoring" element={<ProtectedRoute roles={['PROCTOR', 'ADMIN', 'TEACHER']}><ProctoringDashboard /></ProtectedRoute>} />
+        <Route path="/admin" element={guard(['ADMIN'], <AdminDashboard />)} />
+        <Route path="/admin/users" element={guard(['ADMIN'], <UsersPage />)} />
+        <Route path="/admin/courses" element={guard(['ADMIN'], <CoursesPage />)} />
+        <Route path="/admin/class-batches" element={guard(['ADMIN'], <ClassBatchesPage />)} />
+        <Route path="/admin/organizations" element={guard(['ADMIN'], <OrganizationsPage />)} />
+        <Route path="/admin/tests" element={guard(['ADMIN'], <AdminTestsPage />)} />
+        <Route path="/admin/tests/:testId" element={guard(['ADMIN'], <AdminTestDetailPage />)} />
+        <Route path="/admin/coding-problems" element={guard(['ADMIN'], <CodingProblemsPage />)} />
+        <Route path="/admin/assignments" element={guard(['ADMIN'], <TeacherAssignmentsPage />)} />
+        <Route path="/admin/results" element={guard(['ADMIN'], <AdminResultsPage />)} />
+        <Route path="/admin/results/:attemptId" element={guard(['ADMIN'], <AdminResultDetailPage />)} />
+        <Route path="/admin/proctoring" element={guard(['ADMIN'], <ProctoringDashboard />)} />
+        <Route path="/admin/audit" element={guard(['ADMIN'], <AdminAuditPage />)} />
 
-        <Route path="/student" element={<ProtectedRoute roles={['STUDENT']}><StudentDashboard /></ProtectedRoute>} />
-        <Route path="/student/tests" element={<ProtectedRoute roles={['STUDENT']}><MyTests /></ProtectedRoute>} />
-        <Route path="/student/tests/:testId/exam" element={<ProtectedRoute roles={['STUDENT']}><ExamPage /></ProtectedRoute>} />
-        <Route path="/student/coding-problems" element={<ProtectedRoute roles={['STUDENT']}><StudentCodingProblemsPage /></ProtectedRoute>} />
-        <Route path="/student/coding-problems/:problemId" element={<ProtectedRoute roles={['STUDENT']}><CodingProblemSolvePage /></ProtectedRoute>} />
-        <Route path="/student/assignments" element={<ProtectedRoute roles={['STUDENT']}><StudentAssignmentsPage /></ProtectedRoute>} />
-        <Route path="/student/results" element={<ProtectedRoute roles={['STUDENT']}><StudentResults /></ProtectedRoute>} />
-        <Route path="/student/results/:attemptId" element={<ProtectedRoute roles={['STUDENT']}><StudentResultDetail /></ProtectedRoute>} />
-        <Route path="/student/notifications" element={<ProtectedRoute roles={['STUDENT']}><NotificationsPage /></ProtectedRoute>} />
+        <Route path="/teacher" element={guard(['TEACHER'], <TeacherDashboard />)} />
+        <Route path="/teacher/courses" element={guard(['TEACHER'], <CoursesPage />)} />
+        <Route path="/teacher/class-batches" element={guard(['TEACHER'], <ClassBatchesPage />)} />
+        <Route path="/teacher/questions" element={guard(['TEACHER'], <QuestionsPage />)} />
+        <Route path="/teacher/banks" element={guard(['TEACHER'], <QuestionBanksPage />)} />
+        <Route path="/teacher/tests" element={guard(['TEACHER'], <TestsPage />)} />
+        <Route path="/teacher/tests/:testId" element={guard(['TEACHER'], <TestDetailPage />)} />
+        <Route path="/teacher/coding-problems" element={guard(['TEACHER'], <CodingProblemsPage />)} />
+        <Route path="/teacher/assignments" element={guard(['TEACHER'], <TeacherAssignmentsPage />)} />
+        <Route path="/teacher/results" element={guard(['TEACHER'], <TeacherResults />)} />
+        <Route path="/teacher/results/:attemptId" element={guard(['TEACHER'], <TeacherResultDetail />)} />
+        <Route path="/teacher/proctoring" element={guard(['TEACHER'], <ProctoringDashboard />)} />
+
+        <Route path="/proctoring" element={guard(['PROCTOR', 'ADMIN', 'TEACHER'], <ProctoringDashboard />)} />
+
+        <Route path="/student" element={guard(['STUDENT'], <StudentDashboard />)} />
+        <Route path="/student/tests" element={guard(['STUDENT'], <MyTests />)} />
+        <Route path="/student/tests/:testId/exam" element={guard(['STUDENT'], <ExamPage />)} />
+        <Route path="/student/coding-problems" element={guard(['STUDENT'], <StudentCodingProblemsPage />)} />
+        <Route path="/student/coding-problems/:problemId" element={guard(['STUDENT'], <CodingProblemSolvePage />)} />
+        <Route path="/student/assignments" element={guard(['STUDENT'], <StudentAssignmentsPage />)} />
+        <Route path="/student/results" element={guard(['STUDENT'], <StudentResults />)} />
+        <Route path="/student/results/:attemptId" element={guard(['STUDENT'], <StudentResultDetail />)} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

@@ -49,13 +49,13 @@ export function ResultDetail({ attemptId, onGrade }) {
     <div className="space-y-6">
       <div>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">{test.title}</h1>
+          <h1 className="text-2xl font-bold text-ink">{test.title}</h1>
           <Badge tone={statusTone(attempt.status)}>{attempt.status}</Badge>
           {attempt.passed !== null && (
             attempt.passed ? <Badge tone="green">Passed</Badge> : <Badge tone="red">Failed</Badge>
           )}
         </div>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-ink-muted">
           {test.course?.name ?? 'No course'} · {questions.length} questions · Pass mark {test.passingMarks}
           {student && ` · ${student.fullName ?? student.email}`}
         </p>
@@ -63,39 +63,39 @@ export function ResultDetail({ attemptId, onGrade }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Score</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">
+          <p className="text-xs uppercase tracking-wide text-ink-subtle">Score</p>
+          <p className="mt-1 text-3xl font-bold text-ink">
             {attempt.score !== null ? `${attempt.score}/${test.totalMarks}` : '—'}
           </p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Percentage</p>
-          <p className="mt-1 text-3xl font-bold text-brand-600">{scoreBar ?? '—'}</p>
+          <p className="text-xs uppercase tracking-wide text-ink-subtle">Percentage</p>
+          <p className="mt-1 text-3xl font-bold text-accent">{scoreBar ?? '—'}</p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Time taken</p>
-          <p className="mt-1 text-3xl font-bold text-slate-900">
+          <p className="text-xs uppercase tracking-wide text-ink-subtle">Time taken</p>
+          <p className="mt-1 text-3xl font-bold text-ink">
             {attempt.timeTakenSeconds !== null ? `${Math.floor(attempt.timeTakenSeconds / 60)}m ${attempt.timeTakenSeconds % 60}s` : '—'}
           </p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Submitted</p>
-          <p className="mt-1 text-sm font-semibold text-slate-900">{new Date(attempt.submittedAt).toLocaleString()}</p>
+          <p className="text-xs uppercase tracking-wide text-ink-subtle">Submitted</p>
+          <p className="mt-1 text-sm font-semibold text-ink">{new Date(attempt.submittedAt).toLocaleString()}</p>
         </div>
         <div className="card">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Flags</p>
-          <p className="mt-1 text-3xl font-bold text-amber-600">
+          <p className="text-xs uppercase tracking-wide text-ink-subtle">Flags</p>
+          <p className="mt-1 text-3xl font-bold text-caution-ink">
             {Array.isArray(attempt.suspiciousEvents) ? attempt.suspiciousEvents.length : 0}
           </p>
         </div>
       </div>
 
       {Array.isArray(attempt.suspiciousEvents) && attempt.suspiciousEvents.length > 0 && (
-        <div className="card border-amber-200 bg-amber-50">
-          <p className="text-sm font-semibold text-amber-800">Suspicious activity detected</p>
+        <div className="card border-caution/30 bg-caution-soft">
+          <p className="text-sm font-semibold text-caution-ink">Suspicious activity detected</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {attempt.suspiciousEvents.map((e, i) => (
-              <span key={i} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+              <span key={i} className="rounded bg-caution-soft px-2 py-0.5 text-xs font-medium text-caution-ink">
                 {e.type}
               </span>
             ))}
@@ -109,15 +109,15 @@ export function ResultDetail({ attemptId, onGrade }) {
           return (
             <div key={q.questionId} className="card">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <p className="text-sm font-medium text-slate-900">
-                  <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+                <p className="text-sm font-medium text-ink">
+                  <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-canvas text-xs font-bold text-ink-muted">
                     {idx + 1}
                   </span>
                   {q.text}
                 </p>
                 <div className="flex shrink-0 items-center gap-2">
                   <Badge tone="blue">{typeLabel[q.type] ?? q.type}</Badge>
-                  <span className="text-xs font-semibold text-slate-600">{q.marks} pts</span>
+                  <span className="text-xs font-semibold text-ink-muted">{q.marks} pts</span>
                   {graded ? (
                     <Badge tone={q.isCorrect ? 'green' : 'red'}>
                       {q.marksObtained}/{q.marks}
@@ -134,10 +134,10 @@ export function ResultDetail({ attemptId, onGrade }) {
                     const isRight = opt.isCorrect;
                     const isChosen = opt.selected;
                     const cls = isRight
-                      ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                      ? 'border-positive/30 bg-positive-soft text-positive-ink'
                       : isChosen
-                        ? 'border-red-300 bg-red-50 text-red-900'
-                        : 'border-slate-200 bg-white text-slate-700';
+                        ? 'border-critical/30 bg-critical-soft text-critical-ink'
+                        : 'border-line bg-surface text-ink';
                     const mark = isRight ? 'Correct' : isChosen ? 'Your answer' : '';
                     return (
                       <div key={opt.id} className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm ${cls}`}>
@@ -153,23 +153,23 @@ export function ResultDetail({ attemptId, onGrade }) {
                 <div className="mt-4">
                   <p className="label">Your answer</p>
                   {q.answerJson !== null && q.answerJson !== undefined ? (
-                    <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 font-mono text-sm text-slate-700">
+                    <pre className="whitespace-pre-wrap rounded-lg bg-canvas p-3 font-mono text-sm text-ink">
                       {typeof q.answerJson === 'string' ? q.answerJson : JSON.stringify(q.answerJson, null, 2)}
                     </pre>
                   ) : (
-                    <p className="text-sm text-slate-400">No answer</p>
+                    <p className="text-sm text-ink-subtle">No answer</p>
                   )}
                 </div>
               )}
 
               {q.explanation && (
-                <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <div className="mt-3 rounded-lg bg-canvas px-3 py-2 text-sm text-ink-muted">
                   <span className="font-semibold">Explanation: </span>{q.explanation}
                 </div>
               )}
 
               {onGrade && q.requiresManualGrading && (
-                <div className="mt-4 flex items-end gap-2 border-t border-slate-100 pt-3">
+                <div className="mt-4 flex items-end gap-2 border-t border-line pt-3">
                   <div>
                     <label className="label">Marks (max {q.marks})</label>
                     <input

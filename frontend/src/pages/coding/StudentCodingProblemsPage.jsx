@@ -29,17 +29,17 @@ export function StudentCodingProblemsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {items.map((p) => (
-          <Link key={p.id} to={`/student/coding-problems/${p.id}`} className="card p-5 transition-colors hover:border-brand-300">
+          <Link key={p.id} to={`/student/coding-problems/${p.id}`} className="card p-5 transition-colors hover:border-accent/30">
             <div className="flex items-start justify-between">
-              <h3 className="font-semibold text-slate-900">{p.title}</h3>
+              <h3 className="font-semibold text-ink">{p.title}</h3>
               <Badge tone={p.difficulty === 'EASY' ? 'green' : p.difficulty === 'MEDIUM' ? 'amber' : 'red'}>
                 {p.difficulty}
               </Badge>
             </div>
-            <p className="mt-1 line-clamp-2 text-sm text-slate-500">{p.description}</p>
-            <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+            <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{p.description}</p>
+            <div className="mt-4 flex items-center justify-between text-xs text-ink-subtle">
               <span>{(p.timeLimitMs / 1000).toFixed(1)}s limit</span>
-              <span className="font-medium text-brand-600">Solve →</span>
+              <span className="font-medium text-accent">Solve →</span>
             </div>
           </Link>
         ))}

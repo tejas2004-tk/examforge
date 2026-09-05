@@ -24,29 +24,29 @@ export function VerifyEmailPage() {
 
   return (
     <div className="card text-center">
-      <h2 className="text-2xl font-bold text-slate-900">Email verification</h2>
+      <h2 className="text-2xl font-bold text-ink">Email verification</h2>
 
       {state === 'loading' && (
-        <p className="mt-4 text-sm text-slate-500">Verifying your email…</p>
+        <p className="mt-4 text-sm text-ink-muted">Verifying your email…</p>
       )}
 
       {state === 'success' && (
         <>
-          <p className="mt-4 text-sm text-emerald-700">Your email has been verified successfully.</p>
+          <p className="mt-4 text-sm text-positive-ink">Your email has been verified successfully.</p>
           <Link to="/login" className="btn-primary mt-6 block w-full text-center">Go to sign in</Link>
         </>
       )}
 
       {state === 'error' && (
         <>
-          <p className="mt-4 text-sm text-red-700">{message}</p>
+          <p className="mt-4 text-sm text-critical-ink">{message}</p>
           <Link to="/login" className="btn-primary mt-6 block w-full text-center">Go to sign in</Link>
         </>
       )}
 
       {state === 'loading' && !token && (
         <>
-          <p className="mt-4 text-sm text-red-700">Missing verification token.</p>
+          <p className="mt-4 text-sm text-critical-ink">Missing verification token.</p>
           <Link to="/login" className="btn-primary mt-6 block w-full text-center">Go to sign in</Link>
         </>
       )}

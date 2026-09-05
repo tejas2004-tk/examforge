@@ -107,30 +107,30 @@ export function ProfilePage() {
       <PageHeader title="Profile" description="Manage your account settings." />
 
       <div className="card mb-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Account info</h2>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-ink-muted">Account info</h2>
         <dl className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <dt className="text-slate-400">Full name</dt>
-            <dd className="font-medium text-slate-900">{user.fullName || '—'}</dd>
+            <dt className="text-ink-subtle">Full name</dt>
+            <dd className="font-medium text-ink">{user.fullName || '—'}</dd>
           </div>
           <div>
-            <dt className="text-slate-400">Username</dt>
-            <dd className="font-medium text-slate-900">{user.username}</dd>
+            <dt className="text-ink-subtle">Username</dt>
+            <dd className="font-medium text-ink">{user.username}</dd>
           </div>
           <div>
-            <dt className="text-slate-400">Email</dt>
-            <dd className="font-medium text-slate-900">{user.email}</dd>
+            <dt className="text-ink-subtle">Email</dt>
+            <dd className="font-medium text-ink">{user.email}</dd>
           </div>
           <div>
-            <dt className="text-slate-400">Role</dt>
-            <dd className="font-medium text-slate-900">{user.role}</dd>
+            <dt className="text-ink-subtle">Role</dt>
+            <dd className="font-medium text-ink">{user.role}</dd>
           </div>
         </dl>
       </div>
 
       <div className="card mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Two-factor authentication</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Two-factor authentication</h2>
           <Badge tone={user.twoFactorEnabled ? 'green' : 'slate'}>
             {user.twoFactorEnabled ? 'Enabled' : 'Disabled'}
           </Badge>
@@ -138,7 +138,7 @@ export function ProfilePage() {
 
         {!user.twoFactorEnabled && !twoFactorState.setup && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-ink-muted">
               Add an extra layer of security to your account using an authenticator app.
             </p>
             <Field label="Your password">
@@ -163,7 +163,7 @@ export function ProfilePage() {
               value={twoFactorState.setup.otpauthUrl}
               placeholder="Scan this otpauth URL with your authenticator app"
             />
-            <p className="text-xs text-slate-500">Or enter this secret manually: <code>{twoFactorState.setup.secret}</code></p>
+            <p className="text-xs text-ink-muted">Or enter this secret manually: <code>{twoFactorState.setup.secret}</code></p>
             <Field label="Verification code">
               <input
                 className="input"
@@ -181,7 +181,7 @@ export function ProfilePage() {
 
         {user.twoFactorEnabled && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">Two-factor authentication is active on your account.</p>
+            <p className="text-sm text-ink-muted">Two-factor authentication is active on your account.</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Password">
                 <input type="password" className="input" value={twoFactorState.disablePassword} onChange={(e) => setTwoFactorState((s) => ({ ...s, disablePassword: e.target.value }))} />
@@ -199,20 +199,20 @@ export function ProfilePage() {
 
       <div className="card mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Login history</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Login history</h2>
           <button onClick={loadLoginHistory} className="btn btn-ghost">View history</button>
         </div>
         {loginHistory === null ? (
-          <p className="text-sm text-slate-500">Click "View history" to see your recent sign-ins.</p>
+          <p className="text-sm text-ink-muted">Click "View history" to see your recent sign-ins.</p>
         ) : loginHistory.length === 0 ? (
-          <p className="text-sm text-slate-400">No login history available.</p>
+          <p className="text-sm text-ink-subtle">No login history available.</p>
         ) : (
           <div className="space-y-2">
             {loginHistory.map((h) => (
-              <div key={h.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+              <div key={h.id} className="flex items-center justify-between rounded-lg bg-canvas px-3 py-2 text-sm">
                 <div>
-                  <p className="font-medium text-slate-700">{h.ipAddress} · {h.userAgent || 'Unknown device'}</p>
-                  <p className="text-xs text-slate-500">{new Date(h.createdAt).toLocaleString()}</p>
+                  <p className="font-medium text-ink">{h.ipAddress} · {h.userAgent || 'Unknown device'}</p>
+                  <p className="text-xs text-ink-muted">{new Date(h.createdAt).toLocaleString()}</p>
                 </div>
                 <Badge tone={h.success ? 'green' : 'red'}>{h.success ? 'Success' : 'Failed'}</Badge>
               </div>
@@ -222,7 +222,7 @@ export function ProfilePage() {
       </div>
 
       <div className="card">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Change password</h2>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-ink-muted">Change password</h2>
         {error && <ErrorAlert error={error} />}
         <div className="space-y-4">
           <Field label="Current password">

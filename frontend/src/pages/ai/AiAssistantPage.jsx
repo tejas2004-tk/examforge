@@ -66,33 +66,33 @@ export function AiAssistantPage() {
     <div className="h-[calc(100vh-8rem)]">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">AI Study Assistant</h1>
-          <p className="mt-1 text-sm text-slate-500">Ask questions, clarify concepts, and get study help.</p>
+          <h1 className="text-2xl font-bold text-ink">AI Study Assistant</h1>
+          <p className="mt-1 text-sm text-ink-muted">Ask questions, clarify concepts, and get study help.</p>
         </div>
         <button onClick={newConversation} disabled={busy} className="btn btn-primary">New Chat</button>
       </div>
 
       <div className="grid h-[calc(100%-4rem)] grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
-        <div className="hidden space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 lg:block">
-          {conversations.length === 0 && <p className="p-2 text-sm text-slate-400">No conversations yet.</p>}
+        <div className="hidden space-y-1 overflow-y-auto rounded-xl border border-line bg-surface p-2 lg:block">
+          {conversations.length === 0 && <p className="p-2 text-sm text-ink-subtle">No conversations yet.</p>}
           {conversations.map((c) => (
             <button
               key={c.id}
               onClick={() => setActive(c)}
               className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
-                active?.id === c.id ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'
+                active?.id === c.id ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-canvas'
               }`}
             >
               <p className="line-clamp-1 font-medium">{c.title || 'Untitled'}</p>
-              <p className="text-xs text-slate-400">{new Date(c.updatedAt).toLocaleDateString()}</p>
+              <p className="text-xs text-ink-subtle">{new Date(c.updatedAt).toLocaleDateString()}</p>
             </button>
           ))}
         </div>
 
-        <div className="flex flex-col rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-col rounded-xl border border-line bg-surface">
           {!active ? (
             <div className="flex flex-1 items-center justify-center">
-              <p className="p-8 text-center text-slate-400">
+              <p className="p-8 text-center text-ink-subtle">
                 Start a new conversation to ask the AI study assistant a question.
               </p>
             </div>
@@ -103,17 +103,17 @@ export function AiAssistantPage() {
                   <div key={m.id} className={`flex ${m.role === 'student' ? 'justify-end' : 'justify-start'}`}>
                     <div
                       className={`max-w-[75%] rounded-xl px-4 py-2 text-sm ${
-                        m.role === 'student' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-800'
+                        m.role === 'student' ? 'bg-accent text-white' : 'bg-canvas text-ink'
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{m.content}</p>
                     </div>
                   </div>
                 ))}
-                {busy && <div className="text-sm text-slate-400">Thinking…</div>}
+                {busy && <div className="text-sm text-ink-subtle">Thinking…</div>}
                 <div ref={bottomRef} />
               </div>
-              <div className="border-t border-slate-200 p-3">
+              <div className="border-t border-line p-3">
                 <div className="flex gap-2">
                   <input
                     className="input"

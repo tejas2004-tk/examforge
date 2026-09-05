@@ -103,15 +103,15 @@ export function QuestionBanksPage() {
             <div key={b.id} className="card">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900">{b.name}</h3>
-                  <p className="text-xs text-slate-500">{b.course?.name ?? 'No course'}</p>
+                  <h3 className="text-base font-semibold text-ink">{b.name}</h3>
+                  <p className="text-xs text-ink-muted">{b.course?.name ?? 'No course'}</p>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => openBank(b)} className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100">Open</button>
-                  <button onClick={() => deleteBank(b)} className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Delete</button>
+                  <button onClick={() => openBank(b)} className="rounded px-2 py-1 text-xs font-medium text-ink-muted hover:bg-canvas">Open</button>
+                  <button onClick={() => deleteBank(b)} className="rounded px-2 py-1 text-xs font-medium text-critical-ink hover:bg-critical-soft">Delete</button>
                 </div>
               </div>
-              <p className="mt-3 text-sm text-slate-600">{b.questions?.length ?? 0} questions</p>
+              <p className="mt-3 text-sm text-ink-muted">{b.questions?.length ?? 0} questions</p>
             </div>
           ))}
         </div>
@@ -140,7 +140,7 @@ export function QuestionBanksPage() {
         {activeBank && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">{activeBank.questions?.length ?? 0} questions in bank</p>
+              <p className="text-sm text-ink-muted">{activeBank.questions?.length ?? 0} questions in bank</p>
               <button onClick={() => setGenOpen(true)} className="btn-primary">Generate test from bank</button>
             </div>
 
@@ -154,14 +154,14 @@ export function QuestionBanksPage() {
               </select>
             </div>
 
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-line">
               {activeBank.questions?.map((q) => (
                 <li key={q.id} className="flex items-center justify-between py-2">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">{q.text}</p>
-                    <p className="text-xs text-slate-500">{q.type} · {q.difficulty} · {q.marks} pts</p>
+                    <p className="text-sm font-medium text-ink">{q.text}</p>
+                    <p className="text-xs text-ink-muted">{q.type} · {q.difficulty} · {q.marks} pts</p>
                   </div>
-                  <button onClick={() => removeQuestion(q.id)} className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Remove</button>
+                  <button onClick={() => removeQuestion(q.id)} className="rounded px-2 py-1 text-xs font-medium text-critical-ink hover:bg-critical-soft">Remove</button>
                 </li>
               ))}
             </ul>
@@ -281,8 +281,8 @@ function GenerateTestModal({ open, bank, courses, onClose, onCreated }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} className="h-4 w-4 rounded border-slate-300 text-brand-600" />
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={form.shuffleQuestions} onChange={(e) => setForm({ ...form, shuffleQuestions: e.target.checked })} className="h-4 w-4 rounded border-line-strong text-accent" />
             Shuffle question order
           </label>
           <label className="label mb-0">Max attempts</label>

@@ -86,13 +86,13 @@ export function CourseDetailPage() {
       {progress && (
         <div className="card">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-700">Your Progress</span>
-            <span className="text-sm font-bold text-brand-600">{progress.percentage}%</span>
+            <span className="text-sm font-medium text-ink">Your Progress</span>
+            <span className="text-sm font-bold text-accent">{progress.percentage}%</span>
           </div>
-          <div className="h-2 rounded-full bg-slate-200">
-            <div className="h-2 rounded-full bg-brand-600 transition-all" style={{ width: `${progress.percentage}%` }} />
+          <div className="h-2 rounded-full bg-line">
+            <div className="h-2 rounded-full bg-accent transition-all" style={{ width: `${progress.percentage}%` }} />
           </div>
-          <p className="mt-1 text-xs text-slate-500">{progress.completedLessons} of {progress.totalLessons} lessons completed</p>
+          <p className="mt-1 text-xs text-ink-muted">{progress.completedLessons} of {progress.totalLessons} lessons completed</p>
         </div>
       )}
 
@@ -104,27 +104,27 @@ export function CourseDetailPage() {
             <div key={mod.id} className="card">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-semibold text-slate-900">
-                    <span className="mr-2 text-xs text-slate-400">Module {idx + 1}</span>
+                  <h3 className="font-semibold text-ink">
+                    <span className="mr-2 text-xs text-ink-subtle">Module {idx + 1}</span>
                     {mod.title}
                   </h3>
-                  {mod.description && <p className="mt-1 text-sm text-slate-500">{mod.description}</p>}
+                  {mod.description && <p className="mt-1 text-sm text-ink-muted">{mod.description}</p>}
                 </div>
                 {isStaff && (
                   <button onClick={() => setShowLesson(mod.id)} className="btn-secondary text-xs">+ Lesson</button>
                 )}
               </div>
-              <div className="mt-3 divide-y divide-slate-100">
+              <div className="mt-3 divide-y divide-line">
                 {(mod.lessons ?? []).length === 0 ? (
-                  <p className="py-2 text-sm text-slate-400">No lessons in this module</p>
+                  <p className="py-2 text-sm text-ink-subtle">No lessons in this module</p>
                 ) : (
                   (mod.lessons ?? []).map((lesson) => (
-                    <Link key={lesson.id} to={`/lessons/${lesson.id}`} className="flex items-center justify-between py-2.5 hover:bg-slate-50 px-2 -mx-2 rounded">
+                    <Link key={lesson.id} to={`/lessons/${lesson.id}`} className="flex items-center justify-between py-2.5 hover:bg-canvas px-2 -mx-2 rounded">
                       <div className="flex items-center gap-2">
                         <Badge tone={lesson.type === 'video' ? 'violet' : lesson.type === 'pdf' ? 'red' : 'slate'}>{lesson.type}</Badge>
-                        <span className="text-sm text-slate-700">{lesson.title}</span>
+                        <span className="text-sm text-ink">{lesson.title}</span>
                       </div>
-                      {lesson.durationMin && <span className="text-xs text-slate-400">{lesson.durationMin} min</span>}
+                      {lesson.durationMin && <span className="text-xs text-ink-subtle">{lesson.durationMin} min</span>}
                     </Link>
                   ))
                 )}

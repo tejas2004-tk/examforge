@@ -1,13 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  ChartBar,
+  ClipboardList,
+  CodeXml,
+  FileCheck,
+  Library,
+  TriangleAlert,
+  Users,
+} from 'lucide-react';
 import { api } from '../../api/client.js';
-import { Badge, ErrorAlert, Spinner, statusTone } from '../../components/ui.jsx';
+import {
+  Badge,
+  EmptyState,
+  ErrorAlert,
+  PageHeader,
+  Panel,
+  Spinner,
+  StatTile,
+  statusTone,
+} from '../../components/ui.jsx';
+
+const QUICK_ACTIONS = [
+  { to: '/teacher/tests', label: 'Manage tests', icon: FileCheck },
+  { to: '/teacher/questions', label: 'Create questions', icon: ClipboardList },
+  { to: '/teacher/banks', label: 'Question banks', icon: Library },
+  { to: '/teacher/coding-problems', label: 'Coding problems', icon: CodeXml },
+  { to: '/teacher/results', label: 'Grade submissions', icon: ChartBar },
+];
 
 export function TeacherDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       api.get('/tests'),
       api.get('/questions'),
@@ -15,86 +42,134 @@ export function TeacherDashboard() {
       api.get('/courses'),
       api.get('/assignments'),
     ])
-      .then(([tests, questions, results, courses, assignments]) =>
+      .then(([tests, questions, results, courses, assignments]) => {
+        if (cancelled) return;
         setData({
           tests: tests.data.data.items,
           questions: questions.data.data.items,
           results: results.data.data.items,
           courses: courses.data.data.items,
           assignments: assignments.data.data.items,
-        }),
-      )
-      .catch(setError);
+        });
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const stats = useMemo(() => {
+    if (!data) return null;
+    return {
+      published: data.tests.filter((t) => t.status === 'PUBLISHED').length,
+      needsGrading: data.results.filter((r) => r.status === 'SUBMITTED').length,
+      flagged: data.results.filter((r) => (r.suspiciousEventCount ?? 0) > 0).length,
+    };
+  }, [data]);
 
   if (error) return <ErrorAlert error={error} />;
   if (!data) return <Spinner />;
 
-  const published = data.tests.filter((t) => t.status === 'PUBLISHED').length;
-  const pending = data.results.filter((r) => r.status === 'SUBMITTED').length;
-  const flagged = data.results.filter((r) => (r.suspiciousEventCount ?? 0) > 0).length;
-
-  const stats = [
-    { label: 'Courses', value: data.courses.length },
-    { label: 'Questions', value: data.questions.length },
-    { label: 'Tests', value: data.tests.length },
-    { label: 'Published', value: published },
-    { label: 'Assignments', value: data.assignments.length },
-    { label: 'Submissions', value: data.results.length },
-    { label: 'Needs grading', value: pending },
-  ];
-
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900">Teacher Dashboard</h1>
-      <p className="mt-1 text-sm text-slate-500">Your courses, question banks, tests and grading queue.</p>
+      <PageHeader
+        eyebrow="Teacher"
+        title="Dashboard"
+        description="Your courses, question banks, tests and grading queue."
+      />
 
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
-        {stats.map((s) => (
-          <div key={s.label} className="card">
-            <p className="text-3xl font-bold text-brand-600">{s.value}</p>
-            <p className="mt-2 text-sm font-medium text-slate-600">{s.label}</p>
-          </div>
-        ))}
+      {/* Grading and integrity lead, because they are the items that need action
+          today; inventory counts sit below as context. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Needs grading"
+          value={stats.needsGrading}
+          hint={`${data.results.length} submissions total`}
+          tone={stats.needsGrading > 0 ? 'caution' : 'positive'}
+          icon={ClipboardList}
+        />
+        <StatTile
+          label="Flagged attempts"
+          value={stats.flagged}
+          hint="Suspicious proctoring events"
+          tone={stats.flagged > 0 ? 'critical' : 'positive'}
+          icon={TriangleAlert}
+        />
+        <StatTile
+          label="Published tests"
+          value={stats.published}
+          hint={`${data.tests.length} authored`}
+          icon={FileCheck}
+        />
+        <StatTile
+          label="Courses"
+          value={data.courses.length}
+          hint={`${data.questions.length} questions · ${data.assignments.length} assignments`}
+          icon={Users}
+        />
       </div>
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-2">
-        <div className="card">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Recent submissions</h2>
-            <Link to="/teacher/results" className="text-sm font-medium text-brand-600 hover:text-brand-700">All</Link>
-          </div>
-          {data.results.length === 0 && <p className="text-sm text-slate-500">No submissions yet.</p>}
-          <ul className="divide-y divide-slate-100">
-            {data.results.slice(0, 6).map((r) => (
-              <li key={r.id}>
-                <Link to={`/teacher/results/${r.id}`} className="flex items-center justify-between py-2.5 hover:bg-slate-50">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{r.student?.fullName ?? r.student?.email}</p>
-                    <p className="text-xs text-slate-500">{r.test.title}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {r.suspiciousEventCount > 0 && <Badge tone="amber">{r.suspiciousEventCount} flags</Badge>}
-                    <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        <Panel
+          className="lg:col-span-2"
+          title="Recent submissions"
+          action={
+            <Link to="/teacher/results" className="link text-[0.8125rem]">
+              View all
+            </Link>
+          }
+          bodyClassName="p-2"
+        >
+          {data.results.length === 0 ? (
+            <div className="p-3">
+              <EmptyState
+                title="No submissions yet"
+                description="Attempts appear here as soon as students submit a published test."
+              />
+            </div>
+          ) : (
+            <ul className="divide-y divide-line">
+              {data.results.slice(0, 7).map((r) => (
+                <li key={r.id}>
+                  <Link
+                    to={`/teacher/results/${r.id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-accent-soft/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">
+                        {r.student?.fullName ?? r.student?.email}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-ink-subtle">{r.test.title}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {r.suspiciousEventCount > 0 && (
+                        <Badge tone="critical">{r.suspiciousEventCount} flags</Badge>
+                      )}
+                      <Badge tone={statusTone(r.status)}>{r.status.replace(/_/g, ' ').toLowerCase()}</Badge>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
 
-        <div className="card">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Quick actions</h2>
+        <Panel title="Quick actions" bodyClassName="p-3">
+          <div className="grid gap-1.5">
+            {QUICK_ACTIONS.map(({ to, label, icon: Icon }) => (
+              <Link
+                key={to}
+                to={to}
+                className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-accent-soft hover:text-accent-ink"
+              >
+                <Icon className="h-4 w-4 shrink-0 text-ink-subtle group-hover:text-accent" aria-hidden="true" />
+                {label}
+              </Link>
+            ))}
           </div>
-          <div className="grid grid-cols-1 gap-2">
-            <Link to="/teacher/tests" className="btn-secondary justify-start">Manage tests</Link>
-            <Link to="/teacher/questions" className="btn-secondary justify-start">Create questions</Link>
-            <Link to="/teacher/banks" className="btn-secondary justify-start">Build question banks</Link>
-            <Link to="/teacher/assignments" className="btn-secondary justify-start">Manage assignments</Link>
-            <Link to="/teacher/results" className="btn-secondary justify-start">Grade submissions</Link>
-          </div>
-        </div>
+        </Panel>
       </div>
     </div>
   );

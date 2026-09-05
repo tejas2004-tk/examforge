@@ -53,15 +53,15 @@ export function SearchResultsPage() {
 
       {data && total > 0 && (
         <>
-          <p className="mb-6 text-sm text-slate-500">{total} result{total === 1 ? '' : 's'} for "{q}"</p>
+          <p className="mb-6 text-sm text-ink-muted">{total} result{total === 1 ? '' : 's'} for "{q}"</p>
           <div className="space-y-8">
             {data.courses?.length > 0 && (
               <Section title="Courses">
                 {data.courses.map((r) => (
-                  <Link to={`/courses/${r.id}`} key={r.id} className="card p-4 hover:border-brand-300">
-                    <p className="font-medium text-slate-900">{r.name}</p>
-                    <p className="text-sm text-slate-500">{r.code}{r.category ? ` · ${r.category}` : ''}</p>
-                    {r.description && <p className="mt-1 text-sm text-slate-500 line-clamp-2">{r.description}</p>}
+                  <Link to={`/courses/${r.id}`} key={r.id} className="card p-4 hover:border-accent/30">
+                    <p className="font-medium text-ink">{r.name}</p>
+                    <p className="text-sm text-ink-muted">{r.code}{r.category ? ` · ${r.category}` : ''}</p>
+                    {r.description && <p className="mt-1 text-sm text-ink-muted line-clamp-2">{r.description}</p>}
                   </Link>
                 ))}
               </Section>
@@ -71,10 +71,10 @@ export function SearchResultsPage() {
                 {data.tests.map((r) => (
                   <div key={r.id} className="card p-4">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium text-slate-900">{r.title}</p>
+                      <p className="font-medium text-ink">{r.title}</p>
                       <Badge tone={r.status === 'PUBLISHED' ? 'green' : 'slate'}>{r.status}</Badge>
                     </div>
-                    {r.description && <p className="mt-1 text-sm text-slate-500 line-clamp-2">{r.description}</p>}
+                    {r.description && <p className="mt-1 text-sm text-ink-muted line-clamp-2">{r.description}</p>}
                   </div>
                 ))}
               </Section>
@@ -83,7 +83,7 @@ export function SearchResultsPage() {
               <Section title="Questions">
                 {data.questions.map((r) => (
                   <div key={r.id} className="card p-4">
-                    <p className="font-medium text-slate-900">{r.text}</p>
+                    <p className="font-medium text-ink">{r.text}</p>
                     <div className="mt-2 flex gap-2">
                       <Badge>{r.type}</Badge>
                       <Badge tone="amber">{r.difficulty}</Badge>
@@ -97,8 +97,8 @@ export function SearchResultsPage() {
               <Section title="Assignments">
                 {data.assignments.map((r) => (
                   <div key={r.id} className="card p-4">
-                    <p className="font-medium text-slate-900">{r.title}</p>
-                    {r.dueAt && <p className="text-sm text-slate-500">Due {new Date(r.dueAt).toLocaleDateString()}</p>}
+                    <p className="font-medium text-ink">{r.title}</p>
+                    {r.dueAt && <p className="text-sm text-ink-muted">Due {new Date(r.dueAt).toLocaleDateString()}</p>}
                   </div>
                 ))}
               </Section>
@@ -108,8 +108,8 @@ export function SearchResultsPage() {
                 {data.users.map((r) => (
                   <div key={r.id} className="card flex items-center justify-between p-4">
                     <div>
-                      <p className="font-medium text-slate-900">{r.fullName || r.username}</p>
-                      <p className="text-sm text-slate-500">{r.email}</p>
+                      <p className="font-medium text-ink">{r.fullName || r.username}</p>
+                      <p className="text-sm text-ink-muted">{r.email}</p>
                     </div>
                     <Badge>{r.role}</Badge>
                   </div>
@@ -120,7 +120,7 @@ export function SearchResultsPage() {
               <Section title="Lessons">
                 {data.lessons.map((r) => (
                   <div key={r.id} className="card flex items-center justify-between p-4">
-                    <p className="font-medium text-slate-900">{r.title}</p>
+                    <p className="font-medium text-ink">{r.title}</p>
                     <Badge tone="amber">{r.type}</Badge>
                   </div>
                 ))}
@@ -140,7 +140,7 @@ export function SearchResultsPage() {
 function Section({ title, children }) {
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-muted">{title}</h2>
       <div className="space-y-2">{children}</div>
     </section>
   );

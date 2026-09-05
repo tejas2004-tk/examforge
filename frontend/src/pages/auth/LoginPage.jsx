@@ -2,12 +2,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { z } from 'zod';
 import { roleHome } from '../../routes/index.jsx';
 import { useAuthStore } from '../../store/authStore.js';
+import { ErrorAlert, Field } from '../../components/ui.jsx';
 
 const loginSchema = z.object({
-  email: z.string().email('Enter a valid email address'),
+  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -18,6 +20,7 @@ export function LoginPage() {
   const [serverError, setServerError] = useState(null);
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -53,69 +56,99 @@ export function LoginPage() {
   const onSubmit = async (values) => {
     if (twoFactorRequired) {
       await doLogin(getValues(), twoFactorCode);
-    } else {
-      await doLogin(values);
+      return;
     }
+    await doLogin(values);
   };
 
   return (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-slate-900">Sign in</h2>
-      <p className="mt-1 text-sm text-slate-500">Welcome back! Log in to your account.</p>
+    <div>
+      <h1 className="text-display text-ink">
+        {twoFactorRequired ? 'Two-factor verification' : 'Sign in'}
+      </h1>
+      <p className="mt-1.5 text-sm text-ink-muted">
+        {twoFactorRequired
+          ? 'Enter the six-digit code from your authenticator app.'
+          : 'Use your ExamForge account to continue.'}
+      </p>
 
-      <form className="mt-6 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
-        {serverError && (
-          <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</div>
-        )}
+      <form className="mt-7 space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+        {serverError && <ErrorAlert error={serverError} />}
 
-        <div>
-          <label className="label" htmlFor="email">Email</label>
-          <input id="email" type="email" className="input" placeholder="you@example.com" {...register('email')} />
-          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
-        </div>
+        <Field label="Email" htmlFor="email" error={errors.email?.message}>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            autoFocus={!twoFactorRequired}
+            className="input"
+            placeholder="you@example.com"
+            aria-invalid={Boolean(errors.email)}
+            {...register('email')}
+          />
+        </Field>
 
-        <div>
-          <label className="label" htmlFor="password">Password</label>
-          <input id="password" type="password" className="input" placeholder="••••••••" {...register('password')} />
-          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>}
-        </div>
+        <Field label="Password" htmlFor="password" error={errors.password?.message}>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              className="input pr-10"
+              placeholder="••••••••"
+              aria-invalid={Boolean(errors.password)}
+              {...register('password')}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-canvas hover:text-ink-muted"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </Field>
 
         {twoFactorRequired && (
-          <div>
-            <label className="label" htmlFor="twoFactorCode">Two-factor code</label>
+          <Field
+            label="Authentication code"
+            htmlFor="twoFactorCode"
+            hint="Six digits from your authenticator app."
+          >
             <input
               id="twoFactorCode"
               type="text"
               inputMode="numeric"
+              autoComplete="one-time-code"
               maxLength={6}
-              className="input"
-              placeholder="6-digit code"
+              autoFocus
+              className="input text-center text-lg font-semibold tracking-[0.4em]"
+              placeholder="000000"
               value={twoFactorCode}
-              onChange={(e) => setTwoFactorCode(e.target.value)}
+              onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ''))}
             />
-            <p className="mt-1 text-xs text-amber-600">Enter the code from your authenticator app.</p>
+          </Field>
+        )}
+
+        {!twoFactorRequired && (
+          <div className="flex justify-end">
+            <Link to="/forgot-password" className="link text-[0.8125rem]">
+              Forgot password?
+            </Link>
           </div>
         )}
 
-        <div className="flex items-center justify-end">
-          <Link to="/forgot-password" className="text-sm font-medium text-brand-600 hover:text-brand-700">
-            Forgot password?
-          </Link>
-        </div>
-
-        <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
-          {isSubmitting
-            ? 'Signing in…'
-            : twoFactorRequired
-              ? 'Verify & sign in'
-              : 'Sign in'}
+        <button type="submit" disabled={isSubmitting} className="btn-primary btn-lg w-full">
+          {isSubmitting && <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          {isSubmitting ? 'Signing in…' : twoFactorRequired ? 'Verify and sign in' : 'Sign in'}
         </button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-slate-500">
-        Don't have an account?{' '}
-        <Link to="/register" className="font-medium text-brand-600 hover:text-brand-700">
-          Register
+      <p className="mt-7 text-center text-sm text-ink-muted">
+        Don&apos;t have an account?{' '}
+        <Link to="/register" className="link">
+          Create one
         </Link>
       </p>
     </div>

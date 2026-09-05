@@ -28,7 +28,7 @@ export function TeacherResults({ detailPath = '/teacher/results' }) {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="pb-3 pr-4 font-medium">Student</th>
                 <th className="pb-3 pr-4 font-medium">Test</th>
                 <th className="pb-3 pr-4 font-medium">Status</th>
@@ -40,26 +40,26 @@ export function TeacherResults({ detailPath = '/teacher/results' }) {
                 <th className="pb-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {items.map((r) => (
                 <tr key={r.id}>
                   <td className="py-3 pr-4">
-                    <p className="font-medium text-slate-900">{r.student?.fullName ?? r.student?.email}</p>
-                    <p className="text-xs text-slate-500">{r.student?.email}</p>
+                    <p className="font-medium text-ink">{r.student?.fullName ?? r.student?.email}</p>
+                    <p className="text-xs text-ink-muted">{r.student?.email}</p>
                   </td>
-                  <td className="max-w-[240px] py-3 pr-4"><p className="truncate text-slate-700">{r.test.title}</p></td>
+                  <td className="max-w-[240px] py-3 pr-4"><p className="truncate text-ink">{r.test.title}</p></td>
                   <td className="py-3 pr-4"><Badge tone={statusTone(r.status)}>{r.status}</Badge></td>
-                  <td className="py-3 pr-4 font-semibold text-slate-900">
+                  <td className="py-3 pr-4 font-semibold text-ink">
                     {r.score !== null ? `${r.score}/${r.test.totalMarks}` : '—'}
                   </td>
-                  <td className="py-3 pr-4 text-slate-600">{r.percentage !== null ? `${r.percentage}%` : '—'}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{r.percentage !== null ? `${r.percentage}%` : '—'}</td>
                   <td className="py-3 pr-4">
                     {r.passed === null ? '—' : r.passed ? <Badge tone="green">Passed</Badge> : <Badge tone="red">Failed</Badge>}
                   </td>
-                  <td className="py-3 pr-4 text-amber-600">{r.suspiciousEventCount ?? 0}</td>
-                  <td className="py-3 pr-4 text-slate-500">{new Date(r.submittedAt).toLocaleDateString()}</td>
+                  <td className="py-3 pr-4 text-caution-ink">{r.suspiciousEventCount ?? 0}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{new Date(r.submittedAt).toLocaleDateString()}</td>
                   <td className="py-3 text-right">
-                    <Link to={`${detailPath}/${r.id}`} className="text-sm font-medium text-brand-600 hover:text-brand-700">Review</Link>
+                    <Link to={`${detailPath}/${r.id}`} className="text-sm font-medium text-accent hover:text-accent">Review</Link>
                   </td>
                 </tr>
               ))}

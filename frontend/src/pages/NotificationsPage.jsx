@@ -69,7 +69,7 @@ export function NotificationsPage() {
             key={f}
             onClick={() => setFilter(f)}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              filter === f ? 'bg-brand-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              filter === f ? 'bg-accent text-white' : 'border border-line-strong bg-surface text-ink hover:bg-canvas'
             }`}
           >
             {f === 'all' ? 'All' : 'Unread'}
@@ -85,21 +85,21 @@ export function NotificationsPage() {
             <div
               key={n.id}
               className={`flex items-start gap-4 rounded-xl border p-4 ${
-                n.isRead ? 'border-slate-200 bg-white' : 'border-brand-200 bg-brand-50'
+                n.isRead ? 'border-line bg-surface' : 'border-accent/30 bg-accent-soft'
               }`}
             >
               <div className="shrink-0 pt-0.5">
                 <Badge tone={typeTone[n.type] || 'slate'}>{n.type?.replace(/_/g, ' ')}</Badge>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900">{n.title}</p>
-                {n.message && <p className="mt-1 text-sm text-slate-600">{n.message}</p>}
-                <p className="mt-1 text-xs text-slate-400">{new Date(n.createdAt).toLocaleString()}</p>
+                <p className="text-sm font-medium text-ink">{n.title}</p>
+                {n.message && <p className="mt-1 text-sm text-ink-muted">{n.message}</p>}
+                <p className="mt-1 text-xs text-ink-subtle">{new Date(n.createdAt).toLocaleString()}</p>
               </div>
               {!n.isRead && (
                 <button
                   onClick={() => markRead(n.id)}
-                  className="shrink-0 text-xs font-medium text-brand-600 hover:text-brand-700"
+                  className="shrink-0 text-xs font-medium text-accent hover:text-accent"
                 >
                   Mark read
                 </button>

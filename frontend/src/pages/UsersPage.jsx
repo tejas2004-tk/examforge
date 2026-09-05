@@ -89,7 +89,7 @@ export function UsersPage() {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="pb-3 pr-4 font-medium">User</th>
                 <th className="pb-3 pr-4 font-medium">Role</th>
                 <th className="pb-3 pr-4 font-medium">Status</th>
@@ -97,24 +97,24 @@ export function UsersPage() {
                 <th className="pb-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-line">
               {items.map((u) => (
                 <tr key={u.id}>
                   <td className="py-3 pr-4">
-                    <p className="font-medium text-slate-900">{u.fullName ?? u.username}</p>
-                    <p className="text-xs text-slate-500">{u.email}</p>
+                    <p className="font-medium text-ink">{u.fullName ?? u.username}</p>
+                    <p className="text-xs text-ink-muted">{u.email}</p>
                   </td>
                   <td className="py-3 pr-4"><Badge tone={roleTone[u.role]}>{u.role}</Badge></td>
                   <td className="py-3 pr-4">
                     {u.isBlocked ? <Badge tone="red">Blocked</Badge> : u.isActive ? <Badge tone="green">Active</Badge> : <Badge tone="amber">Inactive</Badge>}
                   </td>
-                  <td className="py-3 pr-4 text-slate-500">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : 'Never'}</td>
+                  <td className="py-3 pr-4 text-ink-muted">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : 'Never'}</td>
                   <td className="py-3 text-right whitespace-nowrap">
-                    <button onClick={() => openEdit(u)} className="mr-2 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100">Edit</button>
-                    <button onClick={() => toggleBlock(u)} className="mr-2 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50">
+                    <button onClick={() => openEdit(u)} className="mr-2 rounded px-2 py-1 text-xs font-medium text-ink-muted hover:bg-canvas">Edit</button>
+                    <button onClick={() => toggleBlock(u)} className="mr-2 rounded px-2 py-1 text-xs font-medium text-caution-ink hover:bg-caution-soft">
                       {u.isBlocked ? 'Unblock' : 'Block'}
                     </button>
-                    <button onClick={() => remove(u)} className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">Delete</button>
+                    <button onClick={() => remove(u)} className="rounded px-2 py-1 text-xs font-medium text-critical-ink hover:bg-critical-soft">Delete</button>
                   </td>
                 </tr>
               ))}
@@ -126,7 +126,7 @@ export function UsersPage() {
       <Modal open={Boolean(modal)} onClose={() => setModal(null)} title={modal === 'create' ? 'Create account' : 'Edit user'}>
         <div className="space-y-4">
           {formError && <ErrorAlert error={formError} />}
-          {modal === 'create' && <p className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800">These credentials are issued by an administrator. Public registration is limited to student accounts.</p>}
+          {modal === 'create' && <p className="rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent">These credentials are issued by an administrator. Public registration is limited to student accounts.</p>}
           <Field label="Email">
             <input className="input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={modal !== 'create'} />
           </Field>

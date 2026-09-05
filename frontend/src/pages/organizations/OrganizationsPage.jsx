@@ -66,11 +66,11 @@ export function OrganizationsPage() {
               key={o.id}
               onClick={() => selectOrg(o)}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                active?.id === o.id ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                active?.id === o.id ? 'border-accent/30 bg-accent-soft' : 'border-line bg-surface hover:border-line-strong'
               }`}
             >
-              <p className="font-semibold text-slate-900">{o.name}</p>
-              <p className="text-xs text-slate-500">@{o.slug}</p>
+              <p className="font-semibold text-ink">{o.name}</p>
+              <p className="text-xs text-ink-muted">@{o.slug}</p>
               {o._count?.members != null && <Badge tone="brand">{o._count.members} members</Badge>}
             </button>
           ))}
@@ -87,7 +87,7 @@ export function OrganizationsPage() {
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="New Organization">
         <div className="space-y-4">
-          {formError && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>}
+          {formError && <div className="rounded-lg bg-critical-soft px-3 py-2 text-sm text-critical-ink">{formError}</div>}
           <Field label="Name">
             <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
@@ -98,7 +98,7 @@ export function OrganizationsPage() {
             <textarea className="input" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <Field label="Brand color">
-            <input type="color" className="h-10 w-16 rounded border border-slate-200" value={form.brandColor} onChange={(e) => setForm({ ...form, brandColor: e.target.value })} />
+            <input type="color" className="h-10 w-16 rounded border border-line" value={form.brandColor} onChange={(e) => setForm({ ...form, brandColor: e.target.value })} />
           </Field>
           <button onClick={create} disabled={busy} className="btn btn-primary w-full">
             {busy ? 'Creating…' : 'Create Organization'}
@@ -126,16 +126,16 @@ function OrgDetail({ org, onChanged }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-bold text-slate-900">{org.name}</h2>
-        <p className="text-sm text-slate-500">{org.description}</p>
+        <h2 className="text-lg font-bold text-ink">{org.name}</h2>
+        <p className="text-sm text-ink-muted">{org.description}</p>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-line">
         {['departments', 'academic-years'].map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`border-b-2 px-3 pb-2 text-sm font-medium ${tab === t ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            className={`border-b-2 px-3 pb-2 text-sm font-medium ${tab === t ? 'border-accent text-accent' : 'border-transparent text-ink-muted hover:text-ink'}`}
           >
             {t === 'departments' ? 'Departments' : 'Academic Years'}
           </button>
@@ -176,24 +176,24 @@ function DepList({ org, departments }) {
     <div className="space-y-2">
       {departments.length === 0 && <EmptyState title="No departments" description="Add a department within this organization." />}
       {departments.map((dep) => (
-        <div key={dep.id} className="rounded-lg border border-slate-200">
+        <div key={dep.id} className="rounded-lg border border-line">
           <button onClick={() => toggleDep(dep)} className="flex w-full items-center justify-between p-4 text-left">
             <div>
-              <p className="font-medium text-slate-900">{dep.name}</p>
-              <p className="text-xs text-slate-500">Code: {dep.code}</p>
+              <p className="font-medium text-ink">{dep.name}</p>
+              <p className="text-xs text-ink-muted">Code: {dep.code}</p>
             </div>
-            <span className="text-sm text-slate-400">{depOpen?.id === dep.id ? '▾' : '▸'}</span>
+            <span className="text-sm text-ink-subtle">{depOpen?.id === dep.id ? '▾' : '▸'}</span>
           </button>
           {depOpen?.id === dep.id && (
-            <div className="border-t border-slate-100 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Batches</p>
+            <div className="border-t border-line p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Batches</p>
               {(batchesMap[dep.id] || []).map((b) => (
-                <div key={b.id} className="flex items-center justify-between rounded bg-slate-50 px-3 py-2 text-sm">
-                  <span className="font-medium text-slate-700">{b.name}</span>
+                <div key={b.id} className="flex items-center justify-between rounded bg-canvas px-3 py-2 text-sm">
+                  <span className="font-medium text-ink">{b.name}</span>
                   <Badge>{b.code}</Badge>
                 </div>
               ))}
-              {(batchesMap[dep.id] || []).length === 0 && <p className="text-sm text-slate-400">No batches yet.</p>}
+              {(batchesMap[dep.id] || []).length === 0 && <p className="text-sm text-ink-subtle">No batches yet.</p>}
             </div>
           )}
         </div>
@@ -208,9 +208,9 @@ function AcademicYearList({ org, academicYears }) {
     <div className="space-y-2">
       {academicYears.length === 0 && <EmptyState title="No academic years" description="Add academic years to organize semesters." />}
       {academicYears.map((ay) => (
-        <div key={ay.id} className="rounded-lg border border-slate-200 p-4">
-          <p className="font-medium text-slate-900">{ay.name}</p>
-          <p className="text-xs text-slate-500">
+        <div key={ay.id} className="rounded-lg border border-line p-4">
+          <p className="font-medium text-ink">{ay.name}</p>
+          <p className="text-xs text-ink-muted">
             {new Date(ay.startDate).toLocaleDateString()} – {new Date(ay.endDate).toLocaleDateString()}
           </p>
         </div>
