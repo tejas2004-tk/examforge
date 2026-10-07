@@ -895,7 +895,7 @@ async function main() {
     },
   });
 
-  // Demo Application for Alex Student
+  // Demo Applications for Alex Student across different hiring stages
   await prisma.placementApplication.upsert({
     where: {
       driveId_studentId: {
@@ -903,12 +903,73 @@ async function main() {
         studentId: student.id,
       },
     },
-    update: {},
+    update: {
+      status: 'SHORTLISTED',
+      currentRound: 'Technical Interview',
+      assessmentScore: 94.5,
+      proctorStatus: 'CLEARED',
+      proctorNotes: 'Face verified. Zero tab-switch alerts during 90-min online assessment.',
+      notes: 'Passed Google Online Challenge with 94.5%. Cleared for Technical Round 1.',
+    },
     create: {
       driveId: driveGoogle.id,
       studentId: student.id,
       status: 'SHORTLISTED',
-      notes: 'Passed initial coding assessment round with top score.',
+      currentRound: 'Technical Interview',
+      assessmentScore: 94.5,
+      proctorStatus: 'CLEARED',
+      proctorNotes: 'Face verified. Zero tab-switch alerts during 90-min online assessment.',
+      notes: 'Passed Google Online Challenge with 94.5%. Cleared for Technical Round 1.',
+    },
+  });
+
+  await prisma.placementApplication.upsert({
+    where: {
+      driveId_studentId: {
+        driveId: 'drive-microsoft-sde',
+        studentId: student.id,
+      },
+    },
+    update: {
+      status: 'APPLIED',
+      currentRound: 'Online Assessment',
+      assessmentScore: 82.0,
+      proctorStatus: 'IN_PROGRESS',
+      proctorNotes: 'Camera feed active, 1 tab switch warning issued. Answering question 3.',
+      notes: 'Invited to Microsoft Azure OA screening round.',
+    },
+    create: {
+      driveId: 'drive-microsoft-sde',
+      studentId: student.id,
+      status: 'APPLIED',
+      currentRound: 'Online Assessment',
+      assessmentScore: 82.0,
+      proctorStatus: 'IN_PROGRESS',
+      proctorNotes: 'Camera feed active, 1 tab switch warning issued. Answering question 3.',
+      notes: 'Invited to Microsoft Azure OA screening round.',
+    },
+  });
+
+  await prisma.placementApplication.upsert({
+    where: {
+      driveId_studentId: {
+        driveId: 'drive-amazon-sde',
+        studentId: student.id,
+      },
+    },
+    update: {
+      status: 'APPLIED',
+      currentRound: 'Resume Screening',
+      proctorStatus: 'NOT_STARTED',
+      notes: 'Application registered for national off-campus drive.',
+    },
+    create: {
+      driveId: 'drive-amazon-sde',
+      studentId: student.id,
+      status: 'APPLIED',
+      currentRound: 'Resume Screening',
+      proctorStatus: 'NOT_STARTED',
+      notes: 'Application registered for national off-campus drive.',
     },
   });
 

@@ -23,13 +23,42 @@ import {
   Clock,
   MapPin,
   CheckCircle2,
+  Search,
+  Filter,
+  ShieldCheck,
+  ShieldAlert,
+  UserCheck,
+  Award,
+  Layers,
+  ChevronRight,
+  TrendingUp,
 } from 'lucide-react';
 
+const SELECTION_ROUNDS = [
+  'Resume Screening',
+  'Online Assessment',
+  'Technical Interview 1',
+  'Technical Interview 2',
+  'HR Round',
+  'Offer Released',
+];
+
 export function AdminPlacementPage() {
+  const [activeTab, setActiveTab] = useState('drives'); // 'drives' | 'candidates' | 'profiles'
   const [stats, setStats] = useState(null);
   const [drives, setDrives] = useState([]);
+  const [candidates, setCandidates] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Filters
+  const [candidateFilterDrive, setCandidateFilterDrive] = useState('ALL');
+  const [candidateFilterStatus, setCandidateFilterStatus] = useState('ALL');
+  const [candidateSearch, setCandidateSearch] = useState('');
+
+  const [profileSearch, setProfileSearch] = useState('');
+  const [profileBranchFilter, setProfileBranchFilter] = useState('ALL');
 
   // Drive create/edit modal
   const [driveModal, setDriveModal] = useState(false);
@@ -50,6 +79,7 @@ export function AdminPlacementPage() {
     deadline: '',
     driveDate: '',
     status: 'ACTIVE',
+    selectionProcess: SELECTION_ROUNDS.join(', '),
   });
   const [savingDrive, setSavingDrive] = useState(false);
 
@@ -64,12 +94,14 @@ export function AdminPlacementPage() {
     try {
       setLoading(true);
       setError(null);
-      const [statsRes, drivesRes] = await Promise.all([
+      const [statsRes, drivesRes, profilesRes] = await Promise.all([
         api.get('/placements/stats').catch(() => ({ data: { data: { stats: null } } })),
         api.get('/placements/drives'),
+        api.get('/placements/profiles').catch(() => ({ data: { data: { profiles: [] } } })),
       ]);
       setStats(statsRes.data?.data?.stats || null);
       setDrives(drivesRes.data?.data?.drives || []);
+      setProfiles(profilesRes.data?.data?.profiles || []);
     } catch (err) {
       setError(err?.response?.data?.message || err.message || 'Failed to load placement data');
     } finally {
@@ -77,8 +109,19 @@ export function AdminPlacementPage() {
     }
   };
 
+  const loadCandidates = async () => {
+    try {
+      // Fetch proctor candidates which aggregates candidates across drives
+      const res = await api.get('/placements/proctor/candidates');
+      setCandidates(res.data?.data?.candidates || []);
+    } catch (err) {
+      console.error('Failed to load candidate pipeline', err);
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadCandidates();
   }, []);
 
   const openCreateModal = () => {
@@ -99,6 +142,7 @@ export function AdminPlacementPage() {
       deadline: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
       driveDate: new Date(Date.now() + 20 * 86400000).toISOString().split('T')[0],
       status: 'ACTIVE',
+      selectionProcess: SELECTION_ROUNDS.join(', '),
     });
     setDriveModal(true);
   };
@@ -121,6 +165,7 @@ export function AdminPlacementPage() {
       deadline: drive.deadline ? new Date(drive.deadline).toISOString().split('T')[0] : '',
       driveDate: drive.driveDate ? new Date(drive.driveDate).toISOString().split('T')[0] : '',
       status: drive.status || 'ACTIVE',
+      selectionProcess: Array.isArray(drive.selectionProcess) ? drive.selectionProcess.join(', ') : SELECTION_ROUNDS.join(', '),
     });
     setDriveModal(true);
   };
@@ -164,6 +209,7 @@ export function AdminPlacementPage() {
 
       setDriveModal(false);
       loadData();
+      loadCandidates();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to save drive');
     } finally {
@@ -179,6 +225,7 @@ export function AdminPlacementPage() {
       await api.delete(`/placements/drives/${driveId}`);
       toast.success('Placement drive deleted successfully');
       loadData();
+      loadCandidates();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to delete drive');
     }
@@ -197,22 +244,57 @@ export function AdminPlacementPage() {
     }
   };
 
-  const handleUpdateApplicantStatus = async (appId, newStatus, currentNotes) => {
+  const handleUpdateApplicantStatus = async (appId, newStatus, currentRound, notes) => {
     try {
       await api.patch(`/placements/applications/${appId}/status`, {
         status: newStatus,
-        notes: currentNotes,
+        currentRound: currentRound || undefined,
+        notes: notes || undefined,
       });
-      toast.success(`Applicant status updated to ${newStatus}`);
+      toast.success(`Candidate updated: ${newStatus}`);
       if (viewingApplicantsDrive) {
         const res = await api.get(`/placements/drives/${viewingApplicantsDrive.id}`);
         setApplicants(res.data?.data?.drive?.applications || []);
       }
+      loadCandidates();
       loadData();
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to update applicant status');
+      toast.error(err?.response?.data?.message || 'Failed to update applicant');
     }
   };
+
+  const handleVerifyProfile = async (profileId, isVerified) => {
+    try {
+      await api.patch(`/placements/profiles/${profileId}/verify`, { isVerified });
+      toast.success(isVerified ? 'Student POD profile verified' : 'Profile verification revoked');
+      const profilesRes = await api.get('/placements/profiles');
+      setProfiles(profilesRes.data?.data?.profiles || []);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to update profile verification');
+    }
+  };
+
+  // Filtered Candidates
+  const filteredCandidates = candidates.filter((c) => {
+    const matchesDrive = candidateFilterDrive === 'ALL' || c.driveId === candidateFilterDrive;
+    const matchesStatus = candidateFilterStatus === 'ALL' || c.status === candidateFilterStatus;
+    const q = candidateSearch.toLowerCase();
+    const studentName = (c.student?.placementProfile?.fullName || c.student?.fullName || c.student?.username || '').toLowerCase();
+    const company = (c.drive?.companyName || '').toLowerCase();
+    const roll = (c.student?.placementProfile?.rollNumber || '').toLowerCase();
+    const matchesSearch = !q || studentName.includes(q) || company.includes(q) || roll.includes(q);
+    return matchesDrive && matchesStatus && matchesSearch;
+  });
+
+  // Filtered Profiles
+  const filteredProfiles = profiles.filter((p) => {
+    const matchesBranch = profileBranchFilter === 'ALL' || p.branch === profileBranchFilter;
+    const q = profileSearch.toLowerCase();
+    const name = (p.fullName || p.user?.fullName || p.user?.username || '').toLowerCase();
+    const roll = (p.rollNumber || '').toLowerCase();
+    const matchesSearch = !q || name.includes(q) || roll.includes(q);
+    return matchesBranch && matchesSearch;
+  });
 
   if (loading) return <Spinner label="Loading Placement Operations…" />;
   if (error) return <ErrorAlert error={error} />;
@@ -221,7 +303,7 @@ export function AdminPlacementPage() {
     <div className="space-y-6">
       <PageHeader
         title="Training & Placement Cell Operations"
-        description="Corporate drive management, candidate eligibility shortlisting, and placement statistics."
+        description="Corporate drive management, multi-round candidate pipeline, and verified student POD dossier directory."
         eyebrow="Placement Administration"
       >
         <button
@@ -252,7 +334,7 @@ export function AdminPlacementPage() {
               <Users className="h-4 w-4 text-blue-500" />
             </div>
             <p className="mt-2 text-2xl font-bold text-ink">{stats.totalApplications ?? 0}</p>
-            <span className="text-[11px] text-ink-muted">Across all drives</span>
+            <span className="text-[11px] text-ink-muted">Across all rounds</span>
           </div>
 
           <div className="rounded-xl border border-line bg-surface p-4">
@@ -272,124 +354,535 @@ export function AdminPlacementPage() {
             <p className="mt-2 text-2xl font-bold text-ink">
               {stats.averageCtc ? `₹${stats.averageCtc.toFixed(1)} LPA` : '—'}
             </p>
-            <span className="text-[11px] text-ink-muted">Highest: {stats.highestCtc ? `₹${stats.highestCtc} LPA` : '—'}</span>
+            <span className="text-[11px] text-ink-muted">
+              Highest: {stats.highestCtc ? `₹${stats.highestCtc} LPA` : '—'}
+            </span>
           </div>
         </div>
       )}
 
-      {/* Drives Management Table */}
-      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-ink">Campus & Off-Campus Drives</h3>
-            <p className="text-xs text-ink-muted">Manage active recruiting drives and review registered applicants</p>
-          </div>
-          <span className="text-xs font-semibold text-ink-subtle">{drives.length} total drives</span>
-        </div>
+      {/* Top Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-1">
+        <div className="flex gap-2 sm:gap-4">
+          <button
+            type="button"
+            onClick={() => setActiveTab('drives')}
+            className={`relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
+              activeTab === 'drives'
+                ? 'text-accent border-b-2 border-accent'
+                : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            <Briefcase className="h-4 w-4" />
+            <span>Recruitment Drives</span>
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-bold text-ink-muted">
+              {drives.length}
+            </span>
+          </button>
 
-        {drives.length === 0 ? (
-          <EmptyState
-            title="No placement drives created"
-            description="Create your first placement drive to allow students to verify eligibility and apply."
-            action={
-              <button onClick={openCreateModal} className="btn btn-sm btn-primary">
-                Create First Drive
-              </button>
-            }
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[11px]">
-                  <th className="pb-3 pr-4 font-semibold">Company & Role</th>
-                  <th className="pb-3 pr-4 font-semibold">Type</th>
-                  <th className="pb-3 pr-4 font-semibold">Criteria (CGPA/Backlogs/Batch)</th>
-                  <th className="pb-3 pr-4 font-semibold">CTC (LPA)</th>
-                  <th className="pb-3 pr-4 font-semibold">Deadline</th>
-                  <th className="pb-3 pr-4 font-semibold">Applicants</th>
-                  <th className="pb-3 pr-4 font-semibold">Status</th>
-                  <th className="pb-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {drives.map((drive) => (
-                  <tr key={drive.id} className="hover:bg-canvas/50">
-                    <td className="py-3.5 pr-4">
-                      <div className="font-bold text-ink text-sm">{drive.companyName}</div>
-                      <div className="text-ink-muted">{drive.role}</div>
-                      <div className="text-[11px] text-ink-subtle mt-0.5">{drive.location || 'Remote/Hybrid'}</div>
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                          drive.driveType === 'ON_CAMPUS'
-                            ? 'bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20'
-                            : 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
-                        }`}
-                      >
-                        {drive.driveType === 'ON_CAMPUS' ? 'On-Campus' : 'Off-Campus'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 pr-4 space-y-0.5 text-[11px]">
-                      <div>Min CGPA: <strong>{drive.eligibilityCgpa > 0 ? drive.eligibilityCgpa : 'Open'}</strong></div>
-                      <div>Max Backlogs: <strong>{drive.maxBacklogs ?? 0}</strong></div>
-                      {drive.batchYear && <div>Batch: <strong>{drive.batchYear}</strong></div>}
-                    </td>
-                    <td className="py-3.5 pr-4 font-bold text-positive-ink text-sm">
-                      {drive.ctcLpa ? `₹${drive.ctcLpa} LPA` : '—'}
-                    </td>
-                    <td className="py-3.5 pr-4 text-ink-muted">
-                      {new Date(drive.deadline).toLocaleDateString()}
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenApplicants(drive)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
-                      >
-                        <Users className="h-3.5 w-3.5" />
-                        <span>{drive.applicantCount || 0} candidates</span>
-                      </button>
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <Badge
-                        tone={
-                          drive.status === 'ACTIVE'
-                            ? 'positive'
-                            : drive.status === 'COMPLETED'
-                            ? 'neutral'
-                            : drive.status === 'CANCELLED'
-                            ? 'critical'
-                            : 'warning'
-                        }
-                      >
-                        {drive.status}
-                      </Badge>
-                    </td>
-                    <td className="py-3.5 text-right space-x-1">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(drive)}
-                        className="btn btn-ghost btn-xs text-xs"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDrive(drive.id)}
-                        className="btn btn-ghost btn-xs text-critical-ink hover:bg-critical-soft"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={() => setActiveTab('candidates')}
+            className={`relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
+              activeTab === 'candidates'
+                ? 'text-accent border-b-2 border-accent'
+                : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            <span>Candidate Hiring Pipeline</span>
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-bold text-ink-muted">
+              {candidates.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('profiles')}
+            className={`relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
+              activeTab === 'profiles'
+                ? 'text-accent border-b-2 border-accent'
+                : 'text-ink-muted hover:text-ink'
+            }`}
+          >
+            <UserCheck className="h-4 w-4" />
+            <span>Student POD Dossiers</span>
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-bold text-ink-muted">
+              {profiles.length}
+            </span>
+          </button>
+        </div>
       </div>
+
+      {/* TAB 1: RECRUITMENT DRIVES */}
+      {activeTab === 'drives' && (
+        <div className="space-y-4">
+          {drives.length === 0 ? (
+            <EmptyState
+              title="No placement drives found"
+              description="Create a new recruitment drive to start welcoming eligible student applications."
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px] bg-canvas/40">
+                    <th className="py-3 px-4 font-semibold">Company & Role</th>
+                    <th className="py-3 px-3 font-semibold">Type & Compensation</th>
+                    <th className="py-3 px-3 font-semibold">Eligibility Criteria</th>
+                    <th className="py-3 px-3 font-semibold">Deadline & Date</th>
+                    <th className="py-3 px-3 font-semibold">Pipeline Stage</th>
+                    <th className="py-3 px-3 font-semibold">Status</th>
+                    <th className="py-3 px-4 text-right font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {drives.map((drive) => (
+                    <tr key={drive.id} className="hover:bg-canvas/50 transition-colors">
+                      <td className="py-3 px-4">
+                        <strong className="text-ink text-sm block font-bold">{drive.companyName}</strong>
+                        <span className="text-ink-muted text-xs">{drive.role}</span>
+                        {drive.location && (
+                          <div className="text-[11px] text-ink-subtle flex items-center gap-1 mt-0.5">
+                            <MapPin className="h-3 w-3" />
+                            <span>{drive.location}</span>
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3">
+                        <span className="rounded-md bg-canvas px-2 py-0.5 text-[10px] font-semibold text-ink-muted border border-line">
+                          {drive.driveType === 'ON_CAMPUS' ? 'On-Campus' : 'Off-Campus'}
+                        </span>
+                        <div className="mt-1 font-bold text-positive-ink text-xs">
+                          {drive.ctcLpa ? `₹${drive.ctcLpa} LPA` : 'Undisclosed'}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 space-y-0.5 text-[11px]">
+                        <div>Min CGPA: <strong className="text-ink">{drive.eligibilityCgpa || '0.0'}</strong></div>
+                        <div>Max Backlogs: <strong className="text-ink">{drive.maxBacklogs ?? 0}</strong></div>
+                        {drive.batchYear && (
+                          <div>Batch: <strong className="text-ink">{drive.batchYear}</strong></div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3 text-[11px] space-y-0.5">
+                        <div className="flex items-center gap-1 text-ink-muted">
+                          <Clock className="h-3 w-3 text-ink-subtle" />
+                          <span>Deadline: {new Date(drive.deadline).toLocaleDateString()}</span>
+                        </div>
+                        {drive.driveDate && (
+                          <div className="flex items-center gap-1 text-ink-subtle">
+                            <Calendar className="h-3 w-3" />
+                            <span>Drive: {new Date(drive.driveDate).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenApplicants(drive)}
+                          className="btn btn-secondary btn-xs inline-flex items-center gap-1.5"
+                        >
+                          <Users className="h-3.5 w-3.5 text-accent" />
+                          <span>Applicants ({drive._count?.applications ?? 0})</span>
+                        </button>
+                      </td>
+
+                      <td className="py-3 px-3">
+                        <Badge
+                          tone={
+                            drive.status === 'ACTIVE'
+                              ? 'positive'
+                              : drive.status === 'UPCOMING'
+                              ? 'blue'
+                              : drive.status === 'COMPLETED'
+                              ? 'neutral'
+                              : 'critical'
+                          }
+                        >
+                          {drive.status}
+                        </Badge>
+                      </td>
+
+                      <td className="py-3 px-4 text-right space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(drive)}
+                          className="btn btn-ghost btn-xs text-xs"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDrive(drive.id)}
+                          className="btn btn-ghost btn-xs text-critical-ink hover:bg-critical-soft"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: CANDIDATE HIRING PIPELINE */}
+      {activeTab === 'candidates' && (
+        <div className="space-y-4">
+          {/* Filters Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 text-xs">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px]">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-subtle" />
+                <input
+                  type="text"
+                  placeholder="Search candidate name, roll, company..."
+                  value={candidateSearch}
+                  onChange={(e) => setCandidateSearch(e.target.value)}
+                  className="input input-sm pl-8 w-full"
+                />
+              </div>
+
+              <select
+                value={candidateFilterDrive}
+                onChange={(e) => setCandidateFilterDrive(e.target.value)}
+                className="input input-sm"
+              >
+                <option value="ALL">All Companies</option>
+                {drives.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.companyName} ({d.role})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={candidateFilterStatus}
+                onChange={(e) => setCandidateFilterStatus(e.target.value)}
+                className="input input-sm"
+              >
+                <option value="ALL">All Stages</option>
+                <option value="APPLIED">APPLIED</option>
+                <option value="SHORTLISTED">SHORTLISTED</option>
+                <option value="INTERVIEWED">INTERVIEWED</option>
+                <option value="SELECTED">SELECTED (Offer)</option>
+                <option value="REJECTED">REJECTED</option>
+              </select>
+            </div>
+
+            <span className="text-[11px] text-ink-muted">
+              Showing {filteredCandidates.length} candidate applications
+            </span>
+          </div>
+
+          {filteredCandidates.length === 0 ? (
+            <EmptyState
+              title="No candidates found"
+              description="No candidates match your filters or no applications have been submitted."
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px] bg-canvas/40">
+                    <th className="py-3 px-4 font-semibold">Candidate</th>
+                    <th className="py-3 px-3 font-semibold">Drive & Role</th>
+                    <th className="py-3 px-3 font-semibold">Academic Merit</th>
+                    <th className="py-3 px-3 font-semibold">Current Round</th>
+                    <th className="py-3 px-3 font-semibold">Online Proctor Status</th>
+                    <th className="py-3 px-3 font-semibold">Stage Decision</th>
+                    <th className="py-3 px-4 text-right font-semibold">Advance Round</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {filteredCandidates.map((c) => {
+                    const prof = c.student?.placementProfile;
+                    return (
+                      <tr key={c.id} className="hover:bg-canvas/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-ink font-semibold block text-sm">
+                              {prof?.fullName || c.student?.fullName || c.student?.username}
+                            </strong>
+                            {prof?.isVerified && (
+                              <ShieldCheck className="h-3.5 w-3.5 text-positive shrink-0" title="Verified POD Dossier" />
+                            )}
+                          </div>
+                          <span className="text-[11px] text-ink-subtle">
+                            {prof?.rollNumber || c.student?.email}
+                          </span>
+                          {prof?.resumeUrl && (
+                            <a
+                              href={prof.resumeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-accent flex items-center gap-1 hover:underline mt-0.5"
+                            >
+                              <span>View Resume</span>
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <strong className="text-ink block">{c.drive?.companyName}</strong>
+                          <span className="text-ink-muted text-[11px]">{c.drive?.role}</span>
+                          <span className="text-positive-ink block text-[10px] font-bold">
+                            ₹{c.drive?.ctcLpa} LPA
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-3 space-y-0.5 text-[11px]">
+                          <div>Branch: <strong className="text-ink">{prof?.branch || 'N/A'}</strong></div>
+                          <div>CGPA: <strong className="text-positive-ink">{prof?.cgpa ?? '—'}</strong></div>
+                          <div className="text-[10px] text-ink-subtle">
+                            Backlogs: {prof?.activeBacklogs ?? 0}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-canvas px-2.5 py-1 text-xs font-semibold text-ink border border-line">
+                            <Layers className="h-3 w-3 text-accent" />
+                            <span>{c.currentRound || 'Resume Screening'}</span>
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              tone={
+                                c.proctorStatus === 'CLEARED'
+                                  ? 'positive'
+                                  : c.proctorStatus === 'FLAGGED'
+                                  ? 'warning'
+                                  : c.proctorStatus === 'DISQUALIFIED'
+                                  ? 'critical'
+                                  : 'neutral'
+                              }
+                            >
+                              {c.proctorStatus || 'NOT_STARTED'}
+                            </Badge>
+                            {c.assessmentScore !== undefined && c.assessmentScore !== null && (
+                              <span className="text-[10px] font-bold text-ink">
+                                {c.assessmentScore}%
+                              </span>
+                            )}
+                          </div>
+                          {c.proctorNotes && (
+                            <p className="text-[10px] text-ink-subtle mt-0.5 truncate max-w-[140px]" title={c.proctorNotes}>
+                              {c.proctorNotes}
+                            </p>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <select
+                            value={c.status}
+                            onChange={(e) =>
+                              handleUpdateApplicantStatus(c.id, e.target.value, c.currentRound, c.notes)
+                            }
+                            className="input input-xs text-[11px] bg-canvas"
+                          >
+                            <option value="APPLIED">APPLIED</option>
+                            <option value="SHORTLISTED">SHORTLISTED</option>
+                            <option value="INTERVIEWED">INTERVIEWED</option>
+                            <option value="SELECTED">SELECTED (Offer)</option>
+                            <option value="REJECTED">REJECTED</option>
+                          </select>
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          <select
+                            value={c.currentRound || 'Resume Screening'}
+                            onChange={(e) =>
+                              handleUpdateApplicantStatus(c.id, c.status, e.target.value, c.notes)
+                            }
+                            className="input input-xs text-[11px] bg-canvas"
+                          >
+                            {SELECTION_ROUNDS.map((round) => (
+                              <option key={round} value={round}>
+                                {round}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: STUDENT POD DOSSIERS */}
+      {activeTab === 'profiles' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 text-xs">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px]">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-subtle" />
+                <input
+                  type="text"
+                  placeholder="Search student name or roll..."
+                  value={profileSearch}
+                  onChange={(e) => setProfileSearch(e.target.value)}
+                  className="input input-sm pl-8 w-full"
+                />
+              </div>
+
+              <select
+                value={profileBranchFilter}
+                onChange={(e) => setProfileBranchFilter(e.target.value)}
+                className="input input-sm"
+              >
+                <option value="ALL">All Branches</option>
+                <option value="Computer Science">Computer Science</option>
+                <option value="Information Technology">Information Technology</option>
+                <option value="Electronics & Communication">Electronics & Communication</option>
+                <option value="Electrical Engineering">Electrical Engineering</option>
+                <option value="Mechanical Engineering">Mechanical Engineering</option>
+              </select>
+            </div>
+
+            <span className="text-[11px] text-ink-muted">
+              {filteredProfiles.length} student dossiers registered
+            </span>
+          </div>
+
+          {filteredProfiles.length === 0 ? (
+            <EmptyState
+              title="No student profiles registered"
+              description="Students will appear here once they complete their placement registration."
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px] bg-canvas/40">
+                    <th className="py-3 px-4 font-semibold">Student Name & Roll</th>
+                    <th className="py-3 px-3 font-semibold">Academic Record</th>
+                    <th className="py-3 px-3 font-semibold">Skills & Tech Stack</th>
+                    <th className="py-3 px-3 font-semibold">External Links</th>
+                    <th className="py-3 px-3 font-semibold">Verification Status</th>
+                    <th className="py-3 px-4 text-right font-semibold">T&P Verification</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {filteredProfiles.map((p) => (
+                    <tr key={p.id} className="hover:bg-canvas/50 transition-colors">
+                      <td className="py-3 px-4">
+                        <strong className="text-ink font-semibold block text-sm">
+                          {p.fullName || p.user?.fullName || p.user?.username}
+                        </strong>
+                        <span className="text-[11px] text-ink-subtle">
+                          Roll: {p.rollNumber || 'N/A'} • {p.user?.email}
+                        </span>
+                        {p.phone && (
+                          <div className="text-[10px] text-ink-muted mt-0.5">
+                            Phone: {p.phone}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3 space-y-0.5 text-[11px]">
+                        <div>Branch: <strong className="text-ink">{p.branch || 'N/A'}</strong></div>
+                        <div>CGPA: <strong className="text-positive-ink font-bold">{p.cgpa}</strong></div>
+                        <div className="text-[10px] text-ink-subtle">
+                          10th: {p.tenthPercentage ?? '—'}% • 12th: {p.twelfthPercentage ?? '—'}% • Backlogs: {p.activeBacklogs ?? 0}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3">
+                        <div className="flex flex-wrap gap-1 max-w-[240px]">
+                          {Array.isArray(p.skills) && p.skills.length > 0 ? (
+                            p.skills.slice(0, 4).map((s) => (
+                              <span
+                                key={s}
+                                className="rounded bg-canvas px-1.5 py-0.5 text-[10px] font-medium text-ink-muted border border-line"
+                              >
+                                {s}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-ink-subtle text-[11px]">None recorded</span>
+                          )}
+                          {Array.isArray(p.skills) && p.skills.length > 4 && (
+                            <span className="text-[10px] text-ink-subtle">+{p.skills.length - 4} more</span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-3 space-y-1 text-[11px]">
+                        {p.resumeUrl ? (
+                          <a
+                            href={p.resumeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent flex items-center gap-1 hover:underline"
+                          >
+                            <span>Resume PDF</span>
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        ) : (
+                          <span className="text-ink-subtle">No Resume</span>
+                        )}
+                        {p.githubUrl && (
+                          <a
+                            href={p.githubUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-ink-muted flex items-center gap-1 hover:underline"
+                          >
+                            <span>GitHub</span>
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3">
+                        {p.isVerified ? (
+                          <Badge tone="positive">Verified</Badge>
+                        ) : (
+                          <Badge tone="warning">Pending Review</Badge>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 text-right">
+                        {p.isVerified ? (
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyProfile(p.id, false)}
+                            className="btn btn-ghost btn-xs text-critical-ink hover:bg-critical-soft"
+                          >
+                            Revoke
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyProfile(p.id, true)}
+                            className="btn btn-primary btn-xs inline-flex items-center gap-1"
+                          >
+                            <ShieldCheck className="h-3 w-3" />
+                            <span>Verify Dossier</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* CREATE / EDIT DRIVE MODAL */}
       {driveModal && (
@@ -452,68 +945,57 @@ export function AdminPlacementPage() {
                 <input
                   type="number"
                   step="0.1"
-                  min="0"
                   value={formDrive.ctcLpa}
                   onChange={(e) => setFormDrive({ ...formDrive, ctcLpa: e.target.value })}
                   placeholder="e.g. 18.5"
-                  className="input input-sm w-full font-mono font-semibold"
+                  className="input input-sm w-full"
                 />
               </Field>
             </div>
 
-            {/* Criteria Grid */}
-            <div className="grid grid-cols-4 gap-3 p-3 rounded-xl bg-canvas border border-line">
-              <Field label="Min CGPA Cutoff">
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="Min CGPA" required>
                 <input
                   type="number"
                   step="0.1"
-                  min="0"
-                  max="10"
+                  required
                   value={formDrive.eligibilityCgpa}
                   onChange={(e) => setFormDrive({ ...formDrive, eligibilityCgpa: e.target.value })}
-                  placeholder="7.5"
-                  className="input input-sm w-full font-mono"
+                  className="input input-sm w-full"
                 />
               </Field>
 
-              <Field label="Max Active Backlogs">
+              <Field label="Max Backlogs">
                 <input
                   type="number"
-                  min="0"
-                  max="10"
                   value={formDrive.maxBacklogs}
                   onChange={(e) => setFormDrive({ ...formDrive, maxBacklogs: e.target.value })}
-                  placeholder="0"
-                  className="input input-sm w-full font-mono"
-                />
-              </Field>
-
-              <Field label="Target Batch Year">
-                <input
-                  type="number"
-                  min="2020"
-                  max="2035"
-                  value={formDrive.batchYear}
-                  onChange={(e) => setFormDrive({ ...formDrive, batchYear: e.target.value })}
-                  placeholder="2026"
-                  className="input input-sm w-full font-mono"
+                  className="input input-sm w-full"
                 />
               </Field>
 
               <Field label="Min 10th %">
                 <input
                   type="number"
-                  min="0"
-                  max="100"
                   value={formDrive.minTenthPercent}
                   onChange={(e) => setFormDrive({ ...formDrive, minTenthPercent: e.target.value })}
                   placeholder="70"
-                  className="input input-sm w-full font-mono"
+                  className="input input-sm w-full"
+                />
+              </Field>
+
+              <Field label="Min 12th %">
+                <input
+                  type="number"
+                  value={formDrive.minTwelfthPercent}
+                  onChange={(e) => setFormDrive({ ...formDrive, minTwelfthPercent: e.target.value })}
+                  placeholder="70"
+                  className="input input-sm w-full"
                 />
               </Field>
             </div>
 
-            <Field label="Eligible Branches (comma separated)">
+            <Field label="Eligible Branches (comma-separated)">
               <input
                 type="text"
                 value={formDrive.eligibleBranches}
@@ -580,7 +1062,7 @@ export function AdminPlacementPage() {
         <Modal
           open={Boolean(viewingApplicantsDrive)}
           onClose={() => setViewingApplicantsDrive(null)}
-          title={`Applicants: ${viewingApplicantsDrive.companyName} (${viewingApplicantsDrive.role})`}
+          title={`Drive Applicants: ${viewingApplicantsDrive.companyName} (${viewingApplicantsDrive.role})`}
         >
           <div className="space-y-4">
             {loadingApplicants ? (
@@ -596,11 +1078,11 @@ export function AdminPlacementPage() {
                   <thead>
                     <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px]">
                       <th className="pb-2.5 pr-3 font-semibold">Student Name & Roll</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Academic Credentials</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Resume Dossier</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Applied On</th>
+                      <th className="pb-2.5 pr-3 font-semibold">Academic Record</th>
+                      <th className="pb-2.5 pr-3 font-semibold">Current Round</th>
+                      <th className="pb-2.5 pr-3 font-semibold">Proctor Status</th>
                       <th className="pb-2.5 pr-3 font-semibold">Status</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Change Stage</th>
+                      <th className="pb-2.5 pr-3 font-semibold">Stage Decision</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
@@ -620,26 +1102,28 @@ export function AdminPlacementPage() {
                             CGPA: {app.student?.placementProfile?.cgpa ?? '—'}
                           </div>
                           <div className="text-ink-subtle text-[10px]">
-                            Backlogs: {app.student?.placementProfile?.activeBacklogs ?? 0} • Batch: {app.student?.placementProfile?.graduationYear ?? '—'}
+                            Backlogs: {app.student?.placementProfile?.activeBacklogs ?? 0}
                           </div>
                         </td>
                         <td className="py-3 pr-3">
-                          {app.student?.placementProfile?.resumeUrl ? (
-                            <a
-                              href={app.student?.placementProfile?.resumeUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-accent underline hover:opacity-80"
-                            >
-                              <span>View Resume</span>
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : (
-                            <span className="text-ink-subtle">No resume URL</span>
-                          )}
+                          <span className="font-semibold text-ink">
+                            {app.currentRound || 'Resume Screening'}
+                          </span>
                         </td>
-                        <td className="py-3 pr-3 text-ink-muted">
-                          {new Date(app.appliedAt).toLocaleDateString()}
+                        <td className="py-3 pr-3">
+                          <Badge
+                            tone={
+                              app.proctorStatus === 'CLEARED'
+                                ? 'positive'
+                                : app.proctorStatus === 'FLAGGED'
+                                ? 'warning'
+                                : app.proctorStatus === 'DISQUALIFIED'
+                                ? 'critical'
+                                : 'neutral'
+                            }
+                          >
+                            {app.proctorStatus || 'NOT_STARTED'}
+                          </Badge>
                         </td>
                         <td className="py-3 pr-3">
                           <Badge
@@ -660,7 +1144,7 @@ export function AdminPlacementPage() {
                           <select
                             value={app.status}
                             onChange={(e) =>
-                              handleUpdateApplicantStatus(app.id, e.target.value, app.notes)
+                              handleUpdateApplicantStatus(app.id, e.target.value, app.currentRound, app.notes)
                             }
                             className="input input-xs text-[11px] bg-canvas"
                           >
@@ -693,4 +1177,5 @@ export function AdminPlacementPage() {
     </div>
   );
 }
+
 export default AdminPlacementPage;
