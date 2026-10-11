@@ -1,1179 +1,1100 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import {
   Badge,
+  Button,
+  ConfirmDialog,
   EmptyState,
   ErrorAlert,
   Field,
   Modal,
   PageHeader,
   Spinner,
+  StatTile,
 } from '../../components/ui.jsx';
 import { useToast } from '../../components/toast.jsx';
+import { formatDate, formatDateTime } from '../../lib/format.js';
+import {
+  APPLICATION_STATUSES,
+  BRANCHES,
+  BRANCH_SHORT,
+  DRIVE_STATUSES,
+  apiError,
+  applicationStatusTone,
+  canonicalBranch,
+  dateInputFromNow,
+  deadlineToIso,
+  driveDateToIso,
+  driveStatusTone,
+  toDateInput,
+} from '../../lib/placement.js';
 import {
   Briefcase,
-  CheckCircle,
+  CheckCircle2,
   ExternalLink,
+  FileText,
+  Code2,
+  IndianRupee,
+  Link2,
+  Pencil,
   Plus,
+  Search,
   Trash2,
   Users,
-  Building,
-  GraduationCap,
-  Calendar,
-  Clock,
-  MapPin,
-  CheckCircle2,
-  Search,
-  Filter,
-  ShieldCheck,
-  ShieldAlert,
-  UserCheck,
-  Award,
-  Layers,
-  ChevronRight,
-  TrendingUp,
 } from 'lucide-react';
 
-const SELECTION_ROUNDS = [
-  'Resume Screening',
-  'Online Assessment',
-  'Technical Interview 1',
-  'Technical Interview 2',
-  'HR Round',
-  'Offer Released',
-];
+const SELECTION_ROUNDS = ['Resume Screening', 'Online Assessment', 'Technical Interview', 'HR Round'];
+
+const EMPTY_FORM = {
+  selectionProcess: SELECTION_ROUNDS.join(', '),
+  companyName: '',
+  role: '',
+  description: '',
+  driveType: 'ON_CAMPUS',
+  status: 'ACTIVE',
+  eligibilityCgpa: '7.0',
+  eligibleBranches: ['Computer Science', 'Information Technology'],
+  maxBacklogs: '0',
+  minTenthPercent: '60',
+  minTwelfthPercent: '60',
+  batchYear: String(new Date().getFullYear() + 1),
+  ctcLpa: '',
+  location: '',
+  deadline: '',
+  driveDate: '',
+};
+
+const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+
+/** Client-side checks mirroring the API so most mistakes never leave the form. */
+function validateDrive(f, { isEdit, originalDeadline }) {
+  const e = {};
+  if (!f.companyName.trim()) e.companyName = 'Company name is required';
+  if (!f.role.trim()) e.role = 'Role is required';
+  const range = (key, label, min, max, { int = false } = {}) => {
+    if (f[key] === '' || f[key] === null) return;
+    const n = Number(f[key]);
+    if (Number.isNaN(n)) e[key] = `${label} must be a number`;
+    else if (n < min || n > max) e[key] = `${label} must be between ${min} and ${max}`;
+    else if (int && !Number.isInteger(n)) e[key] = `${label} must be a whole number`;
+  };
+  range('eligibilityCgpa', 'Minimum CGPA', 0, 10);
+  range('maxBacklogs', 'Max backlogs', 0, 50, { int: true });
+  range('minTenthPercent', '10th %', 0, 100);
+  range('minTwelfthPercent', '12th %', 0, 100);
+  range('batchYear', 'Batch year', 2000, 2040, { int: true });
+  range('ctcLpa', 'CTC', 0, 1000);
+  if (!f.deadline) e.deadline = 'Application deadline is required';
+  else {
+    const open = f.status === 'ACTIVE' || f.status === 'UPCOMING';
+    const changed = !isEdit || f.deadline !== originalDeadline;
+    if (open && changed && new Date(deadlineToIso(f.deadline)) < new Date()) {
+      e.deadline = 'Deadline must be today or later for an Active/Upcoming drive';
+    }
+  }
+  if (f.driveDate && f.deadline && f.driveDate < f.deadline) {
+    e.driveDate = 'Drive date cannot be before the application deadline';
+  }
+  return e;
+}
+
+function BranchChips({ value, onChange }) {
+  const toggle = (b) => onChange(value.includes(b) ? value.filter((x) => x !== b) : [...value, b]);
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5">
+        {BRANCHES.map((b) => {
+          const on = value.includes(b);
+          return (
+            <button
+              key={b}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              onClick={() => toggle(b)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                on
+                  ? 'bg-accent text-accent-on shadow-sm'
+                  : 'border border-line bg-canvas text-ink-muted hover:border-accent hover:text-ink'
+              }`}
+            >
+              {on && <CheckCircle2 className="mr-1 inline-block h-3 w-3" />}
+              {b}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-3 text-xs text-ink-subtle">
+        <span>
+          {value.length === 0 ? 'Open to all branches' : `${value.length} branch${value.length === 1 ? '' : 'es'} selected`}
+        </span>
+        <button type="button" className="text-accent hover:underline" onClick={() => onChange([...BRANCHES])}>
+          Select all
+        </button>
+        <button type="button" className="text-accent hover:underline" onClick={() => onChange([])}>
+          Clear (all branches)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ApplicantRow({ app, onSave, rounds = SELECTION_ROUNDS, showDrive = false }) {
+  const p = app.student?.placementProfile;
+  const scoreOf = (a) => (a.assessmentScore ?? '') === '' ? '' : String(a.assessmentScore);
+  const [status, setStatus] = useState(app.status);
+  const [round, setRound] = useState(app.currentRound || rounds[0]);
+  const [score, setScore] = useState(scoreOf(app));
+  const [notes, setNotes] = useState(app.notes || '');
+  const [saving, setSaving] = useState(false);
+  const dirty =
+    status !== app.status ||
+    round !== (app.currentRound || rounds[0]) ||
+    score !== scoreOf(app) ||
+    (notes || '') !== (app.notes || '');
+
+  useEffect(() => {
+    setStatus(app.status);
+    setRound(app.currentRound || rounds[0]);
+    setScore(scoreOf(app));
+    setNotes(app.notes || '');
+  }, [app.status, app.currentRound, app.assessmentScore, app.notes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = async () => {
+    setSaving(true);
+    await onSave(app.id, { status, currentRound: round, assessmentScore: score === '' ? null : Number(score), notes });
+    setSaving(false);
+  };
+
+  return (
+    <tr className="align-top">
+      <td className="py-3 pr-3">
+        {showDrive && app.drive && (
+          <div className="mb-1 text-[11px] font-semibold text-accent-ink">
+            {app.drive.companyName} · {app.drive.role}
+          </div>
+        )}
+        <div className="font-semibold text-ink">{p?.fullName || app.student?.fullName || app.student?.username}</div>
+        <div className="text-[11px] text-ink-subtle">{p?.rollNumber || '—'}</div>
+        <div className="text-[11px] text-ink-subtle">{app.student?.email}</div>
+        {p?.phone && <div className="text-[11px] text-ink-subtle">{p.phone}</div>}
+      </td>
+      <td className="py-3 pr-3 text-xs">
+        {p ? (
+          <>
+            <div className="font-medium text-ink">{p.branch || '—'}</div>
+            <div>
+              CGPA <strong className="text-ink">{p.cgpa}</strong> · Backlogs <strong className="text-ink">{p.activeBacklogs ?? 0}</strong>
+            </div>
+            <div className="text-ink-subtle">
+              10th {p.tenthPercentage ?? '—'}% · 12th {p.twelfthPercentage ?? '—'}% · Batch {p.graduationYear ?? '—'}
+            </div>
+          </>
+        ) : (
+          <span className="text-ink-subtle">No placement profile</span>
+        )}
+      </td>
+      <td className="py-3 pr-3 text-xs">
+        <div className="flex flex-col gap-1">
+          {p?.resumeUrl ? (
+            <a href={p.resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+              <FileText className="h-3 w-3" /> Resume <ExternalLink className="h-3 w-3 opacity-60" />
+            </a>
+          ) : (
+            <span className="text-ink-subtle">No resume</span>
+          )}
+          {p?.githubUrl && (
+            <a href={p.githubUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+              <Code2 className="h-3 w-3" /> GitHub
+            </a>
+          )}
+          {p?.linkedinUrl && (
+            <a href={p.linkedinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+              <Link2 className="h-3 w-3" /> LinkedIn
+            </a>
+          )}
+        </div>
+      </td>
+      <td className="py-3 pr-3 text-xs text-ink-muted whitespace-nowrap">{formatDate(app.appliedAt)}</td>
+      <td className="py-3 pr-3 min-w-[15rem]">
+        <div className="flex items-center gap-2">
+          <Badge tone={applicationStatusTone(app.status)}>{app.status}</Badge>
+        </div>
+        <div className="mt-2 flex flex-col gap-2">
+          <select
+            aria-label="Application status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="input h-9 text-xs"
+          >
+            {APPLICATION_STATUSES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <select
+              aria-label="Current selection round"
+              value={round}
+              onChange={(e) => setRound(e.target.value)}
+              className="input h-9 flex-1 text-xs"
+            >
+              {[...new Set([...rounds, 'Offer Released', round])].map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <input
+              aria-label="Assessment score (%)"
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              value={score}
+              onChange={(e) => setScore(e.target.value)}
+              placeholder="Score %"
+              className="input h-9 w-24 text-xs"
+            />
+          </div>
+          <textarea
+            aria-label="Notes for this applicant"
+            rows={2}
+            value={notes}
+            maxLength={2000}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notes (round feedback, offer details…)"
+            className="input min-h-0 py-2 text-xs"
+          />
+          <Button size="sm" variant={dirty ? 'primary' : 'secondary'} disabled={!dirty} loading={saving} onClick={save}>
+            Save
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export function AdminPlacementPage() {
-  const [activeTab, setActiveTab] = useState('drives'); // 'drives' | 'candidates' | 'profiles'
   const [stats, setStats] = useState(null);
   const [drives, setDrives] = useState([]);
-  const [candidates, setCandidates] = useState([]);
-  const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Filters
-  const [candidateFilterDrive, setCandidateFilterDrive] = useState('ALL');
-  const [candidateFilterStatus, setCandidateFilterStatus] = useState('ALL');
-  const [candidateSearch, setCandidateSearch] = useState('');
-
-  const [profileSearch, setProfileSearch] = useState('');
-  const [profileBranchFilter, setProfileBranchFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
 
   // Drive create/edit modal
   const [driveModal, setDriveModal] = useState(false);
   const [editingDrive, setEditingDrive] = useState(null);
-  const [formDrive, setFormDrive] = useState({
-    companyName: '',
-    role: '',
-    description: '',
-    driveType: 'ON_CAMPUS',
-    eligibilityCgpa: '7.0',
-    eligibleBranches: 'Computer Science, Information Technology',
-    maxBacklogs: '0',
-    minTenthPercent: '70',
-    minTwelfthPercent: '70',
-    batchYear: '2026',
-    ctcLpa: '12.0',
-    location: 'Bangalore / Hybrid',
-    deadline: '',
-    driveDate: '',
-    status: 'ACTIVE',
-    selectionProcess: SELECTION_ROUNDS.join(', '),
-  });
+  const [formDrive, setFormDrive] = useState(EMPTY_FORM);
+  const [formErrors, setFormErrors] = useState({});
+  const [serverError, setServerError] = useState(null);
   const [savingDrive, setSavingDrive] = useState(false);
 
+  // Delete confirmation
+  const [deleting, setDeleting] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
   // Applicants modal
-  const [viewingApplicantsDrive, setViewingApplicantsDrive] = useState(null);
+  const [viewingDrive, setViewingDrive] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [loadingApplicants, setLoadingApplicants] = useState(false);
+  const [applicantFilter, setApplicantFilter] = useState('ALL');
+
+  // Candidates (every application) and student profile tabs
+  const [tab, setTab] = useState('drives');
+  const [candidates, setCandidates] = useState(null);
+  const [candidateDrive, setCandidateDrive] = useState('ALL');
+  const [candidateStatus, setCandidateStatus] = useState('ALL');
+  const [candidateSearch, setCandidateSearch] = useState('');
+  const [profiles, setProfiles] = useState(null);
+  const [profileSearch, setProfileSearch] = useState('');
+  const [profileBranch, setProfileBranch] = useState('ALL');
+  const [verifying, setVerifying] = useState(null);
 
   const toast = useToast();
 
-  const loadData = async () => {
+  const loadData = async ({ quiet = false } = {}) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       setError(null);
-      const [statsRes, drivesRes, profilesRes] = await Promise.all([
-        api.get('/placements/stats').catch(() => ({ data: { data: { stats: null } } })),
-        api.get('/placements/drives'),
-        api.get('/placements/profiles').catch(() => ({ data: { data: { profiles: [] } } })),
-      ]);
+      const [statsRes, drivesRes] = await Promise.all([api.get('/placements/stats'), api.get('/placements/drives')]);
       setStats(statsRes.data?.data?.stats || null);
       setDrives(drivesRes.data?.data?.drives || []);
-      setProfiles(profilesRes.data?.data?.profiles || []);
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || 'Failed to load placement data');
+      setError(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadCandidates = async () => {
-    try {
-      // Fetch proctor candidates which aggregates candidates across drives
-      const res = await api.get('/placements/proctor/candidates');
-      setCandidates(res.data?.data?.candidates || []);
-    } catch (err) {
-      console.error('Failed to load candidate pipeline', err);
-    }
-  };
-
   useEffect(() => {
     loadData();
-    loadCandidates();
   }, []);
+
+  const set = (key) => (e) => setFormDrive((f) => ({ ...f, [key]: e.target.value }));
 
   const openCreateModal = () => {
     setEditingDrive(null);
-    setFormDrive({
-      companyName: '',
-      role: '',
-      description: '',
-      driveType: 'ON_CAMPUS',
-      eligibilityCgpa: '7.0',
-      eligibleBranches: 'Computer Science, Information Technology',
-      maxBacklogs: '0',
-      minTenthPercent: '70',
-      minTwelfthPercent: '70',
-      batchYear: '2026',
-      ctcLpa: '12.0',
-      location: 'Bangalore / Hybrid',
-      deadline: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-      driveDate: new Date(Date.now() + 20 * 86400000).toISOString().split('T')[0],
-      status: 'ACTIVE',
-      selectionProcess: SELECTION_ROUNDS.join(', '),
-    });
+    setFormDrive({ ...EMPTY_FORM, deadline: dateInputFromNow(14), driveDate: dateInputFromNow(21) });
+    setFormErrors({});
+    setServerError(null);
     setDriveModal(true);
   };
 
   const openEditModal = (drive) => {
     setEditingDrive(drive);
+    const branches = Array.isArray(drive.eligibleBranches) ? drive.eligibleBranches : [];
     setFormDrive({
       companyName: drive.companyName || '',
       role: drive.role || '',
       description: drive.description || '',
       driveType: drive.driveType || 'ON_CAMPUS',
-      eligibilityCgpa: drive.eligibilityCgpa?.toString() || '0.0',
-      eligibleBranches: Array.isArray(drive.eligibleBranches) ? drive.eligibleBranches.join(', ') : '',
-      maxBacklogs: drive.maxBacklogs !== undefined ? drive.maxBacklogs.toString() : '0',
-      minTenthPercent: drive.minTenthPercent !== undefined && drive.minTenthPercent !== null ? drive.minTenthPercent.toString() : '',
-      minTwelfthPercent: drive.minTwelfthPercent !== undefined && drive.minTwelfthPercent !== null ? drive.minTwelfthPercent.toString() : '',
-      batchYear: drive.batchYear !== undefined && drive.batchYear !== null ? drive.batchYear.toString() : '2026',
-      ctcLpa: drive.ctcLpa?.toString() || '',
-      location: drive.location || '',
-      deadline: drive.deadline ? new Date(drive.deadline).toISOString().split('T')[0] : '',
-      driveDate: drive.driveDate ? new Date(drive.driveDate).toISOString().split('T')[0] : '',
       status: drive.status || 'ACTIVE',
-      selectionProcess: Array.isArray(drive.selectionProcess) ? drive.selectionProcess.join(', ') : SELECTION_ROUNDS.join(', '),
+      eligibilityCgpa: drive.eligibilityCgpa != null ? String(drive.eligibilityCgpa) : '',
+      eligibleBranches: Array.from(new Set(branches.map((b) => canonicalBranch(b) || b))).filter((b) => BRANCHES.includes(b)),
+      maxBacklogs: drive.maxBacklogs != null ? String(drive.maxBacklogs) : '0',
+      minTenthPercent: drive.minTenthPercent != null ? String(drive.minTenthPercent) : '',
+      minTwelfthPercent: drive.minTwelfthPercent != null ? String(drive.minTwelfthPercent) : '',
+      batchYear: drive.batchYear != null ? String(drive.batchYear) : '',
+      ctcLpa: drive.ctcLpa != null ? String(drive.ctcLpa) : '',
+      location: drive.location || '',
+      selectionProcess: (Array.isArray(drive.selectionProcess) && drive.selectionProcess.length
+        ? drive.selectionProcess
+        : SELECTION_ROUNDS
+      ).join(', '),
+      deadline: toDateInput(drive.deadline),
+      driveDate: toDateInput(drive.driveDate),
     });
+    setFormErrors({});
+    setServerError(null);
     setDriveModal(true);
   };
 
   const handleSaveDrive = async (e) => {
     e.preventDefault();
-    if (!formDrive.companyName.trim() || !formDrive.role.trim() || !formDrive.deadline) {
-      toast.error('Company Name, Role, and Deadline are required');
-      return;
+    const errs = validateDrive(formDrive, {
+      isEdit: Boolean(editingDrive),
+      originalDeadline: editingDrive ? toDateInput(editingDrive.deadline) : null,
+    });
+    setFormErrors(errs);
+    setServerError(null);
+    if (Object.keys(errs).length) return;
+
+    const payload = {
+      companyName: formDrive.companyName.trim(),
+      role: formDrive.role.trim(),
+      description: formDrive.description.trim() || null,
+      driveType: formDrive.driveType,
+      status: formDrive.status,
+      eligibilityCgpa: numOrNull(formDrive.eligibilityCgpa) ?? 0,
+      eligibleBranches: formDrive.eligibleBranches,
+      maxBacklogs: numOrNull(formDrive.maxBacklogs) ?? 0,
+      minTenthPercent: numOrNull(formDrive.minTenthPercent),
+      minTwelfthPercent: numOrNull(formDrive.minTwelfthPercent),
+      batchYear: numOrNull(formDrive.batchYear),
+      ctcLpa: numOrNull(formDrive.ctcLpa),
+      location: formDrive.location.trim() || null,
+      selectionProcess: formDrive.selectionProcess
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean),
+      driveDate: formDrive.driveDate ? driveDateToIso(formDrive.driveDate) : null,
+    };
+    // Re-sending an unchanged deadline would shift it to end-of-day local time;
+    // only send it when the admin actually changed the date.
+    if (!editingDrive || formDrive.deadline !== toDateInput(editingDrive.deadline)) {
+      payload.deadline = deadlineToIso(formDrive.deadline);
     }
 
     try {
       setSavingDrive(true);
-      const payload = {
-        companyName: formDrive.companyName.trim(),
-        role: formDrive.role.trim(),
-        description: formDrive.description.trim() || undefined,
-        driveType: formDrive.driveType,
-        eligibilityCgpa: parseFloat(formDrive.eligibilityCgpa) || 0,
-        eligibleBranches: formDrive.eligibleBranches
-          ? formDrive.eligibleBranches.split(',').map((b) => b.trim()).filter(Boolean)
-          : [],
-        maxBacklogs: formDrive.maxBacklogs ? parseInt(formDrive.maxBacklogs, 10) : 0,
-        minTenthPercent: formDrive.minTenthPercent ? parseFloat(formDrive.minTenthPercent) : undefined,
-        minTwelfthPercent: formDrive.minTwelfthPercent ? parseFloat(formDrive.minTwelfthPercent) : undefined,
-        batchYear: formDrive.batchYear ? parseInt(formDrive.batchYear, 10) : undefined,
-        ctcLpa: formDrive.ctcLpa ? parseFloat(formDrive.ctcLpa) : undefined,
-        location: formDrive.location.trim() || undefined,
-        deadline: new Date(formDrive.deadline).toISOString(),
-        driveDate: formDrive.driveDate ? new Date(formDrive.driveDate).toISOString() : undefined,
-        status: formDrive.status,
-      };
-
       if (editingDrive) {
         await api.put(`/placements/drives/${editingDrive.id}`, payload);
-        toast.success('Placement drive updated successfully!');
+        toast.success(`${payload.companyName} drive updated`);
       } else {
         await api.post('/placements/drives', payload);
-        toast.success('Placement drive created successfully!');
+        toast.success(`${payload.companyName} drive published`);
       }
-
       setDriveModal(false);
-      loadData();
-      loadCandidates();
+      loadData({ quiet: true });
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to save drive');
+      setServerError(apiError(err, 'Failed to save drive'));
     } finally {
       setSavingDrive(false);
     }
   };
 
-  const handleDeleteDrive = async (driveId) => {
-    if (!window.confirm('Are you sure you want to delete this placement drive? All applications will be removed.')) {
-      return;
-    }
+  const confirmDelete = async () => {
+    if (!deleting) return;
     try {
-      await api.delete(`/placements/drives/${driveId}`);
-      toast.success('Placement drive deleted successfully');
-      loadData();
-      loadCandidates();
+      setDeleteBusy(true);
+      await api.delete(`/placements/drives/${deleting.id}`);
+      toast.success(`${deleting.companyName} drive deleted`);
+      setDeleting(null);
+      loadData({ quiet: true });
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to delete drive');
+      toast.error(apiError(err, 'Failed to delete drive'));
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
+  const fetchApplicants = async (driveId) => {
+    const res = await api.get(`/placements/drives/${driveId}`);
+    setApplicants(res.data?.data?.drive?.applications || []);
+  };
+
   const handleOpenApplicants = async (drive) => {
-    setViewingApplicantsDrive(drive);
+    setViewingDrive(drive);
+    setApplicants([]);
+    setApplicantFilter('ALL');
     try {
       setLoadingApplicants(true);
-      const res = await api.get(`/placements/drives/${drive.id}`);
-      setApplicants(res.data?.data?.drive?.applications || []);
+      await fetchApplicants(drive.id);
     } catch (err) {
-      toast.error('Failed to load drive applicants');
+      toast.error(apiError(err, 'Failed to load applicants'));
     } finally {
       setLoadingApplicants(false);
     }
   };
 
-  const handleUpdateApplicantStatus = async (appId, newStatus, currentRound, notes) => {
+  const loadCandidates = async () => {
     try {
-      await api.patch(`/placements/applications/${appId}/status`, {
-        status: newStatus,
-        currentRound: currentRound || undefined,
-        notes: notes || undefined,
-      });
-      toast.success(`Candidate updated: ${newStatus}`);
-      if (viewingApplicantsDrive) {
-        const res = await api.get(`/placements/drives/${viewingApplicantsDrive.id}`);
-        setApplicants(res.data?.data?.drive?.applications || []);
-      }
-      loadCandidates();
-      loadData();
+      const res = await api.get('/placements/proctor/candidates');
+      setCandidates(res.data?.data?.candidates || []);
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to update applicant');
+      toast.error(apiError(err, 'Failed to load candidates'));
+      setCandidates([]);
     }
   };
 
-  const handleVerifyProfile = async (profileId, isVerified) => {
+  const loadProfiles = async () => {
     try {
-      await api.patch(`/placements/profiles/${profileId}/verify`, { isVerified });
-      toast.success(isVerified ? 'Student POD profile verified' : 'Profile verification revoked');
-      const profilesRes = await api.get('/placements/profiles');
-      setProfiles(profilesRes.data?.data?.profiles || []);
+      const res = await api.get('/placements/profiles');
+      setProfiles(res.data?.data?.profiles || []);
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to update profile verification');
+      toast.error(apiError(err, 'Failed to load student profiles'));
+      setProfiles([]);
     }
   };
 
-  // Filtered Candidates
-  const filteredCandidates = candidates.filter((c) => {
-    const matchesDrive = candidateFilterDrive === 'ALL' || c.driveId === candidateFilterDrive;
-    const matchesStatus = candidateFilterStatus === 'ALL' || c.status === candidateFilterStatus;
-    const q = candidateSearch.toLowerCase();
-    const studentName = (c.student?.placementProfile?.fullName || c.student?.fullName || c.student?.username || '').toLowerCase();
-    const company = (c.drive?.companyName || '').toLowerCase();
-    const roll = (c.student?.placementProfile?.rollNumber || '').toLowerCase();
-    const matchesSearch = !q || studentName.includes(q) || company.includes(q) || roll.includes(q);
-    return matchesDrive && matchesStatus && matchesSearch;
-  });
+  useEffect(() => {
+    if (tab === 'candidates' && candidates === null) loadCandidates();
+    if (tab === 'profiles' && profiles === null) loadProfiles();
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filtered Profiles
-  const filteredProfiles = profiles.filter((p) => {
-    const matchesBranch = profileBranchFilter === 'ALL' || p.branch === profileBranchFilter;
-    const q = profileSearch.toLowerCase();
-    const name = (p.fullName || p.user?.fullName || p.user?.username || '').toLowerCase();
-    const roll = (p.rollNumber || '').toLowerCase();
-    const matchesSearch = !q || name.includes(q) || roll.includes(q);
-    return matchesBranch && matchesSearch;
-  });
+  const handleVerifyProfile = async (profile, isVerified) => {
+    try {
+      setVerifying(profile.id);
+      await api.patch(`/placements/profiles/${profile.id}/verify`, { isVerified });
+      toast.success(`${profile.fullName} ${isVerified ? 'verified' : 'marked unverified'}`);
+      await loadProfiles();
+    } catch (err) {
+      toast.error(apiError(err, 'Failed to update profile'));
+    } finally {
+      setVerifying(null);
+    }
+  };
 
-  if (loading) return <Spinner label="Loading Placement Operations…" />;
-  if (error) return <ErrorAlert error={error} />;
+  const handleUpdateApplicant = async (appId, changes) => {
+    try {
+      await api.patch(`/placements/applications/${appId}/status`, changes);
+      toast.success(`Applicant updated: ${changes.status} · ${changes.currentRound}`);
+      if (viewingDrive) await fetchApplicants(viewingDrive.id);
+      if (candidates !== null) loadCandidates();
+      loadData({ quiet: true });
+    } catch (err) {
+      toast.error(apiError(err, 'Failed to update applicant'));
+    }
+  };
+
+  const visibleDrives = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return drives.filter((d) => {
+      if (statusFilter !== 'ALL' && d.status !== statusFilter) return false;
+      if (!q) return true;
+      return [d.companyName, d.role, d.location].some((v) => v?.toLowerCase().includes(q));
+    });
+  }, [drives, statusFilter, search]);
+
+  const visibleApplicants = applicants.filter((a) => applicantFilter === 'ALL' || a.status === applicantFilter);
+
+  if (loading) return <Spinner label="Loading placement operations…" />;
+  if (error) return <ErrorAlert error={error} onRetry={() => loadData()} />;
+
+  const byStatus = stats?.applicationsByStatus || {};
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Training & Placement Cell Operations"
-        description="Corporate drive management, multi-round candidate pipeline, and verified student POD dossier directory."
-        eyebrow="Placement Administration"
-      >
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="btn btn-primary inline-flex items-center gap-1.5"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Recruitment Drive</span>
-        </button>
-      </PageHeader>
+        title="Placement Cell"
+        description="Publish recruitment drives, review applicants and move them through the selection pipeline."
+        eyebrow="Placement administration"
+        actions={
+          <Button variant="primary" icon={Plus} onClick={openCreateModal}>
+            New drive
+          </Button>
+        }
+      />
 
-      {/* Statistics Overview */}
       {stats && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-xl border border-line bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-ink-subtle uppercase">Active Drives</span>
-              <Briefcase className="h-4 w-4 text-accent" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-ink">{stats.activeDrives ?? 0}</p>
-            <span className="text-[11px] text-ink-muted">Total: {stats.totalDrives ?? 0} drives</span>
-          </div>
-
-          <div className="rounded-xl border border-line bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-ink-subtle uppercase">Applications</span>
-              <Users className="h-4 w-4 text-blue-500" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-ink">{stats.totalApplications ?? 0}</p>
-            <span className="text-[11px] text-ink-muted">Across all rounds</span>
-          </div>
-
-          <div className="rounded-xl border border-line bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-ink-subtle uppercase">Placed / Selected</span>
-              <CheckCircle className="h-4 w-4 text-positive" />
-            </div>
-            <p className="mt-2 text-2xl font-bold text-positive-ink">{stats.selectedCount ?? 0}</p>
-            <span className="text-[11px] text-ink-muted">Offers secured</span>
-          </div>
-
-          <div className="rounded-xl border border-line bg-surface p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-ink-subtle uppercase">Avg CTC Package</span>
-              <span className="text-xs font-bold text-accent">₹</span>
-            </div>
-            <p className="mt-2 text-2xl font-bold text-ink">
-              {stats.averageCtc ? `₹${stats.averageCtc.toFixed(1)} LPA` : '—'}
-            </p>
-            <span className="text-[11px] text-ink-muted">
-              Highest: {stats.highestCtc ? `₹${stats.highestCtc} LPA` : '—'}
-            </span>
-          </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatTile
+            label="Open drives"
+            value={(stats.activeDrives ?? 0) + (stats.upcomingDrives ?? 0)}
+            hint={`${stats.activeDrives ?? 0} active · ${stats.upcomingDrives ?? 0} upcoming · ${stats.totalDrives ?? 0} total`}
+            icon={Briefcase}
+            tone="accent"
+          />
+          <StatTile
+            label="Applications"
+            value={stats.totalApplications ?? 0}
+            hint={`${byStatus.SHORTLISTED ?? 0} shortlisted · ${byStatus.INTERVIEWED ?? 0} interviewed`}
+            icon={Users}
+            tone="info"
+          />
+          <StatTile
+            label="Students placed"
+            value={stats.placedStudents ?? 0}
+            hint={`${stats.placementRate ?? 0}% of ${stats.totalRegisteredStudents ?? 0} registered`}
+            icon={CheckCircle2}
+            tone="positive"
+          />
+          <StatTile
+            label="Average CTC"
+            value={stats.averageCtc != null ? `₹${stats.averageCtc} LPA` : '—'}
+            hint={`Highest: ${stats.highestCtc != null ? `₹${stats.highestCtc} LPA` : '—'}`}
+            icon={IndianRupee}
+            tone="neutral"
+          />
         </div>
       )}
 
-      {/* Top Tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-1">
-        <div className="flex gap-2 sm:gap-4">
+      <div role="tablist" aria-label="Placement sections" className="inline-flex rounded-full p-1" style={{ backgroundColor: 'rgb(var(--fill) / var(--fill-alpha))' }}>
+        {[
+          ['drives', 'Drives', drives.length],
+          ['candidates', 'Candidates', stats?.totalApplications ?? null],
+          ['profiles', 'Student profiles', stats?.totalRegisteredStudents ?? null],
+        ].map(([id, label, count]) => (
           <button
+            key={id}
             type="button"
-            onClick={() => setActiveTab('drives')}
-            className={`relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-              activeTab === 'drives'
-                ? 'text-accent border-b-2 border-accent'
-                : 'text-ink-muted hover:text-ink'
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+              tab === id ? 'bg-surface text-ink shadow-card' : 'text-ink-muted hover:text-ink'
             }`}
           >
-            <Briefcase className="h-4 w-4" />
-            <span>Recruitment Drives</span>
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-bold text-ink-muted">
-              {drives.length}
-            </span>
+            {label}
+            {count != null && <span className="ml-1.5 text-xs text-ink-subtle">{count}</span>}
           </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('candidates')}
-            className={`relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-              activeTab === 'candidates'
-                ? 'text-accent border-b-2 border-accent'
-                : 'text-ink-muted hover:text-ink'
-            }`}
-          >
-            <Users className="h-4 w-4" />
-            <span>Candidate Hiring Pipeline</span>
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-bold text-ink-muted">
-              {candidates.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('profiles')}
-            className={`relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2 ${
-              activeTab === 'profiles'
-                ? 'text-accent border-b-2 border-accent'
-                : 'text-ink-muted hover:text-ink'
-            }`}
-          >
-            <UserCheck className="h-4 w-4" />
-            <span>Student POD Dossiers</span>
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-bold text-ink-muted">
-              {profiles.length}
-            </span>
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* TAB 1: RECRUITMENT DRIVES */}
-      {activeTab === 'drives' && (
-        <div className="space-y-4">
-          {drives.length === 0 ? (
-            <EmptyState
-              title="No placement drives found"
-              description="Create a new recruitment drive to start welcoming eligible student applications."
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px] bg-canvas/40">
-                    <th className="py-3 px-4 font-semibold">Company & Role</th>
-                    <th className="py-3 px-3 font-semibold">Type & Compensation</th>
-                    <th className="py-3 px-3 font-semibold">Eligibility Criteria</th>
-                    <th className="py-3 px-3 font-semibold">Deadline & Date</th>
-                    <th className="py-3 px-3 font-semibold">Pipeline Stage</th>
-                    <th className="py-3 px-3 font-semibold">Status</th>
-                    <th className="py-3 px-4 text-right font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {drives.map((drive) => (
-                    <tr key={drive.id} className="hover:bg-canvas/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <strong className="text-ink text-sm block font-bold">{drive.companyName}</strong>
-                        <span className="text-ink-muted text-xs">{drive.role}</span>
-                        {drive.location && (
-                          <div className="text-[11px] text-ink-subtle flex items-center gap-1 mt-0.5">
-                            <MapPin className="h-3 w-3" />
-                            <span>{drive.location}</span>
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-3">
-                        <span className="rounded-md bg-canvas px-2 py-0.5 text-[10px] font-semibold text-ink-muted border border-line">
-                          {drive.driveType === 'ON_CAMPUS' ? 'On-Campus' : 'Off-Campus'}
-                        </span>
-                        <div className="mt-1 font-bold text-positive-ink text-xs">
-                          {drive.ctcLpa ? `₹${drive.ctcLpa} LPA` : 'Undisclosed'}
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-3 space-y-0.5 text-[11px]">
-                        <div>Min CGPA: <strong className="text-ink">{drive.eligibilityCgpa || '0.0'}</strong></div>
-                        <div>Max Backlogs: <strong className="text-ink">{drive.maxBacklogs ?? 0}</strong></div>
-                        {drive.batchYear && (
-                          <div>Batch: <strong className="text-ink">{drive.batchYear}</strong></div>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-3 text-[11px] space-y-0.5">
-                        <div className="flex items-center gap-1 text-ink-muted">
-                          <Clock className="h-3 w-3 text-ink-subtle" />
-                          <span>Deadline: {new Date(drive.deadline).toLocaleDateString()}</span>
-                        </div>
-                        {drive.driveDate && (
-                          <div className="flex items-center gap-1 text-ink-subtle">
-                            <Calendar className="h-3 w-3" />
-                            <span>Drive: {new Date(drive.driveDate).toLocaleDateString()}</span>
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-3">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenApplicants(drive)}
-                          className="btn btn-secondary btn-xs inline-flex items-center gap-1.5"
-                        >
-                          <Users className="h-3.5 w-3.5 text-accent" />
-                          <span>Applicants ({drive._count?.applications ?? 0})</span>
-                        </button>
-                      </td>
-
-                      <td className="py-3 px-3">
-                        <Badge
-                          tone={
-                            drive.status === 'ACTIVE'
-                              ? 'positive'
-                              : drive.status === 'UPCOMING'
-                              ? 'blue'
-                              : drive.status === 'COMPLETED'
-                              ? 'neutral'
-                              : 'critical'
-                          }
-                        >
-                          {drive.status}
-                        </Badge>
-                      </td>
-
-                      <td className="py-3 px-4 text-right space-x-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(drive)}
-                          className="btn btn-ghost btn-xs text-xs"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDrive(drive.id)}
-                          className="btn btn-ghost btn-xs text-critical-ink hover:bg-critical-soft"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 2: CANDIDATE HIRING PIPELINE */}
-      {activeTab === 'candidates' && (
-        <div className="space-y-4">
-          {/* Filters Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 text-xs">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px]">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-subtle" />
-                <input
-                  type="text"
-                  placeholder="Search candidate name, roll, company..."
-                  value={candidateSearch}
-                  onChange={(e) => setCandidateSearch(e.target.value)}
-                  className="input input-sm pl-8 w-full"
-                />
-              </div>
-
-              <select
-                value={candidateFilterDrive}
-                onChange={(e) => setCandidateFilterDrive(e.target.value)}
-                className="input input-sm"
-              >
-                <option value="ALL">All Companies</option>
-                {drives.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.companyName} ({d.role})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={candidateFilterStatus}
-                onChange={(e) => setCandidateFilterStatus(e.target.value)}
-                className="input input-sm"
-              >
-                <option value="ALL">All Stages</option>
-                <option value="APPLIED">APPLIED</option>
-                <option value="SHORTLISTED">SHORTLISTED</option>
-                <option value="INTERVIEWED">INTERVIEWED</option>
-                <option value="SELECTED">SELECTED (Offer)</option>
-                <option value="REJECTED">REJECTED</option>
-              </select>
-            </div>
-
-            <span className="text-[11px] text-ink-muted">
-              Showing {filteredCandidates.length} candidate applications
-            </span>
+      {tab === 'drives' && (
+      <div className="card p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-ink">Recruitment drives</h3>
+            <p className="text-xs text-ink-muted">
+              {visibleDrives.length} of {drives.length} drives
+            </p>
           </div>
-
-          {filteredCandidates.length === 0 ? (
-            <EmptyState
-              title="No candidates found"
-              description="No candidates match your filters or no applications have been submitted."
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px] bg-canvas/40">
-                    <th className="py-3 px-4 font-semibold">Candidate</th>
-                    <th className="py-3 px-3 font-semibold">Drive & Role</th>
-                    <th className="py-3 px-3 font-semibold">Academic Merit</th>
-                    <th className="py-3 px-3 font-semibold">Current Round</th>
-                    <th className="py-3 px-3 font-semibold">Online Proctor Status</th>
-                    <th className="py-3 px-3 font-semibold">Stage Decision</th>
-                    <th className="py-3 px-4 text-right font-semibold">Advance Round</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {filteredCandidates.map((c) => {
-                    const prof = c.student?.placementProfile;
-                    return (
-                      <tr key={c.id} className="hover:bg-canvas/50 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <strong className="text-ink font-semibold block text-sm">
-                              {prof?.fullName || c.student?.fullName || c.student?.username}
-                            </strong>
-                            {prof?.isVerified && (
-                              <ShieldCheck className="h-3.5 w-3.5 text-positive shrink-0" title="Verified POD Dossier" />
-                            )}
-                          </div>
-                          <span className="text-[11px] text-ink-subtle">
-                            {prof?.rollNumber || c.student?.email}
-                          </span>
-                          {prof?.resumeUrl && (
-                            <a
-                              href={prof.resumeUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-accent flex items-center gap-1 hover:underline mt-0.5"
-                            >
-                              <span>View Resume</span>
-                              <ExternalLink className="h-2.5 w-2.5" />
-                            </a>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <strong className="text-ink block">{c.drive?.companyName}</strong>
-                          <span className="text-ink-muted text-[11px]">{c.drive?.role}</span>
-                          <span className="text-positive-ink block text-[10px] font-bold">
-                            ₹{c.drive?.ctcLpa} LPA
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-3 space-y-0.5 text-[11px]">
-                          <div>Branch: <strong className="text-ink">{prof?.branch || 'N/A'}</strong></div>
-                          <div>CGPA: <strong className="text-positive-ink">{prof?.cgpa ?? '—'}</strong></div>
-                          <div className="text-[10px] text-ink-subtle">
-                            Backlogs: {prof?.activeBacklogs ?? 0}
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <span className="inline-flex items-center gap-1 rounded-md bg-canvas px-2.5 py-1 text-xs font-semibold text-ink border border-line">
-                            <Layers className="h-3 w-3 text-accent" />
-                            <span>{c.currentRound || 'Resume Screening'}</span>
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-1.5">
-                            <Badge
-                              tone={
-                                c.proctorStatus === 'CLEARED'
-                                  ? 'positive'
-                                  : c.proctorStatus === 'FLAGGED'
-                                  ? 'warning'
-                                  : c.proctorStatus === 'DISQUALIFIED'
-                                  ? 'critical'
-                                  : 'neutral'
-                              }
-                            >
-                              {c.proctorStatus || 'NOT_STARTED'}
-                            </Badge>
-                            {c.assessmentScore !== undefined && c.assessmentScore !== null && (
-                              <span className="text-[10px] font-bold text-ink">
-                                {c.assessmentScore}%
-                              </span>
-                            )}
-                          </div>
-                          {c.proctorNotes && (
-                            <p className="text-[10px] text-ink-subtle mt-0.5 truncate max-w-[140px]" title={c.proctorNotes}>
-                              {c.proctorNotes}
-                            </p>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <select
-                            value={c.status}
-                            onChange={(e) =>
-                              handleUpdateApplicantStatus(c.id, e.target.value, c.currentRound, c.notes)
-                            }
-                            className="input input-xs text-[11px] bg-canvas"
-                          >
-                            <option value="APPLIED">APPLIED</option>
-                            <option value="SHORTLISTED">SHORTLISTED</option>
-                            <option value="INTERVIEWED">INTERVIEWED</option>
-                            <option value="SELECTED">SELECTED (Offer)</option>
-                            <option value="REJECTED">REJECTED</option>
-                          </select>
-                        </td>
-
-                        <td className="py-3 px-4 text-right">
-                          <select
-                            value={c.currentRound || 'Resume Screening'}
-                            onChange={(e) =>
-                              handleUpdateApplicantStatus(c.id, c.status, e.target.value, c.notes)
-                            }
-                            className="input input-xs text-[11px] bg-canvas"
-                          >
-                            {SELECTION_ROUNDS.map((round) => (
-                              <option key={round} value={round}>
-                                {round}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-subtle" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search company, role, location"
+                aria-label="Search drives"
+                className="input h-9 w-56 pl-8 text-xs"
+              />
             </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 3: STUDENT POD DOSSIERS */}
-      {activeTab === 'profiles' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 text-xs">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px]">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-subtle" />
-                <input
-                  type="text"
-                  placeholder="Search student name or roll..."
-                  value={profileSearch}
-                  onChange={(e) => setProfileSearch(e.target.value)}
-                  className="input input-sm pl-8 w-full"
-                />
-              </div>
-
-              <select
-                value={profileBranchFilter}
-                onChange={(e) => setProfileBranchFilter(e.target.value)}
-                className="input input-sm"
-              >
-                <option value="ALL">All Branches</option>
-                <option value="Computer Science">Computer Science</option>
-                <option value="Information Technology">Information Technology</option>
-                <option value="Electronics & Communication">Electronics & Communication</option>
-                <option value="Electrical Engineering">Electrical Engineering</option>
-                <option value="Mechanical Engineering">Mechanical Engineering</option>
-              </select>
-            </div>
-
-            <span className="text-[11px] text-ink-muted">
-              {filteredProfiles.length} student dossiers registered
-            </span>
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input h-9 w-36 text-xs"
+            >
+              <option value="ALL">All statuses</option>
+              {DRIVE_STATUSES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
           </div>
+        </div>
 
-          {filteredProfiles.length === 0 ? (
-            <EmptyState
-              title="No student profiles registered"
-              description="Students will appear here once they complete their placement registration."
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px] bg-canvas/40">
-                    <th className="py-3 px-4 font-semibold">Student Name & Roll</th>
-                    <th className="py-3 px-3 font-semibold">Academic Record</th>
-                    <th className="py-3 px-3 font-semibold">Skills & Tech Stack</th>
-                    <th className="py-3 px-3 font-semibold">External Links</th>
-                    <th className="py-3 px-3 font-semibold">Verification Status</th>
-                    <th className="py-3 px-4 text-right font-semibold">T&P Verification</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {filteredProfiles.map((p) => (
-                    <tr key={p.id} className="hover:bg-canvas/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <strong className="text-ink font-semibold block text-sm">
-                          {p.fullName || p.user?.fullName || p.user?.username}
-                        </strong>
-                        <span className="text-[11px] text-ink-subtle">
-                          Roll: {p.rollNumber || 'N/A'} • {p.user?.email}
-                        </span>
-                        {p.phone && (
-                          <div className="text-[10px] text-ink-muted mt-0.5">
-                            Phone: {p.phone}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-3 px-3 space-y-0.5 text-[11px]">
-                        <div>Branch: <strong className="text-ink">{p.branch || 'N/A'}</strong></div>
-                        <div>CGPA: <strong className="text-positive-ink font-bold">{p.cgpa}</strong></div>
-                        <div className="text-[10px] text-ink-subtle">
-                          10th: {p.tenthPercentage ?? '—'}% • 12th: {p.twelfthPercentage ?? '—'}% • Backlogs: {p.activeBacklogs ?? 0}
+        {drives.length === 0 ? (
+          <EmptyState
+            title="No placement drives yet"
+            description="Create the first drive so students can check their eligibility and apply."
+            action={
+              <Button variant="primary" size="sm" icon={Plus} onClick={openCreateModal}>
+                Create first drive
+              </Button>
+            }
+          />
+        ) : visibleDrives.length === 0 ? (
+          <p className="py-10 text-center text-sm text-ink-muted">No drives match these filters.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-line text-[11px] uppercase tracking-wider text-ink-subtle">
+                  <th className="pb-3 pr-4 font-semibold">Company & role</th>
+                  <th className="pb-3 pr-4 font-semibold">Eligibility</th>
+                  <th className="pb-3 pr-4 font-semibold">CTC</th>
+                  <th className="pb-3 pr-4 font-semibold">Dates</th>
+                  <th className="pb-3 pr-4 font-semibold">Applicants</th>
+                  <th className="pb-3 pr-4 font-semibold">Status</th>
+                  <th className="pb-3 text-right font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {visibleDrives.map((drive) => {
+                  const branches = Array.isArray(drive.eligibleBranches) ? drive.eligibleBranches : [];
+                  const sc = drive.statusCounts || {};
+                  return (
+                    <tr key={drive.id} className="align-top hover:bg-canvas/50">
+                      <td className="py-3.5 pr-4">
+                        <div className="text-sm font-bold text-ink">{drive.companyName}</div>
+                        <div className="text-ink-muted">{drive.role}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-subtle">
+                          <Badge tone={drive.driveType === 'ON_CAMPUS' ? 'accent' : 'info'}>
+                            {drive.driveType === 'ON_CAMPUS' ? 'On-campus' : 'Off-campus'}
+                          </Badge>
+                          <span>{drive.location || 'Location TBA'}</span>
                         </div>
                       </td>
-
-                      <td className="py-3 px-3">
-                        <div className="flex flex-wrap gap-1 max-w-[240px]">
-                          {Array.isArray(p.skills) && p.skills.length > 0 ? (
-                            p.skills.slice(0, 4).map((s) => (
-                              <span
-                                key={s}
-                                className="rounded bg-canvas px-1.5 py-0.5 text-[10px] font-medium text-ink-muted border border-line"
-                              >
-                                {s}
+                      <td className="space-y-0.5 py-3.5 pr-4 text-[11px]">
+                        <div>
+                          CGPA ≥ <strong>{drive.eligibilityCgpa > 0 ? drive.eligibilityCgpa : 'any'}</strong> · Backlogs ≤{' '}
+                          <strong>{drive.maxBacklogs ?? 0}</strong>
+                        </div>
+                        <div>
+                          10th ≥ <strong>{drive.minTenthPercent ? `${drive.minTenthPercent}%` : 'any'}</strong> · 12th ≥{' '}
+                          <strong>{drive.minTwelfthPercent ? `${drive.minTwelfthPercent}%` : 'any'}</strong>
+                        </div>
+                        <div>Batch: <strong>{drive.batchYear || 'any'}</strong></div>
+                        <div className="flex max-w-[16rem] flex-wrap gap-1 pt-0.5">
+                          {branches.length === 0 ? (
+                            <span className="text-ink-subtle">All branches</span>
+                          ) : (
+                            branches.map((b) => (
+                              <span key={b} title={b} className="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
+                                {BRANCH_SHORT[b] || b}
                               </span>
                             ))
-                          ) : (
-                            <span className="text-ink-subtle text-[11px]">None recorded</span>
-                          )}
-                          {Array.isArray(p.skills) && p.skills.length > 4 && (
-                            <span className="text-[10px] text-ink-subtle">+{p.skills.length - 4} more</span>
                           )}
                         </div>
                       </td>
-
-                      <td className="py-3 px-3 space-y-1 text-[11px]">
-                        {p.resumeUrl ? (
-                          <a
-                            href={p.resumeUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-accent flex items-center gap-1 hover:underline"
-                          >
-                            <span>Resume PDF</span>
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                        ) : (
-                          <span className="text-ink-subtle">No Resume</span>
-                        )}
-                        {p.githubUrl && (
-                          <a
-                            href={p.githubUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-ink-muted flex items-center gap-1 hover:underline"
-                          >
-                            <span>GitHub</span>
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
+                      <td className="py-3.5 pr-4 text-sm font-bold text-positive-ink whitespace-nowrap">
+                        {drive.ctcLpa != null ? `₹${drive.ctcLpa} LPA` : '—'}
+                      </td>
+                      <td className="py-3.5 pr-4 text-[11px] text-ink-muted whitespace-nowrap">
+                        <div>
+                          Apply by <strong className="text-ink">{formatDateTime(drive.deadline)}</strong>
+                        </div>
+                        {drive.isExpired && <div className="font-semibold text-critical-ink">Deadline passed</div>}
+                        <div>Drive: {drive.driveDate ? formatDate(drive.driveDate) : 'TBA'}</div>
+                      </td>
+                      <td className="py-3.5 pr-4">
+                        <Button size="sm" variant="secondary" icon={Users} onClick={() => handleOpenApplicants(drive)}>
+                          {drive.applicantCount || 0}
+                        </Button>
+                        {(sc.SHORTLISTED || sc.SELECTED) > 0 && (
+                          <div className="mt-1 text-[10px] text-ink-subtle">
+                            {sc.SHORTLISTED || 0} shortlisted · {sc.SELECTED || 0} selected
+                          </div>
                         )}
                       </td>
-
-                      <td className="py-3 px-3">
-                        {p.isVerified ? (
-                          <Badge tone="positive">Verified</Badge>
-                        ) : (
-                          <Badge tone="warning">Pending Review</Badge>
-                        )}
+                      <td className="py-3.5 pr-4">
+                        <Badge tone={driveStatusTone(drive.status)}>{drive.status}</Badge>
                       </td>
-
-                      <td className="py-3 px-4 text-right">
-                        {p.isVerified ? (
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyProfile(p.id, false)}
-                            className="btn btn-ghost btn-xs text-critical-ink hover:bg-critical-soft"
-                          >
-                            Revoke
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyProfile(p.id, true)}
-                            className="btn btn-primary btn-xs inline-flex items-center gap-1"
-                          >
-                            <ShieldCheck className="h-3 w-3" />
-                            <span>Verify Dossier</span>
-                          </button>
-                        )}
+                      <td className="py-3.5 text-right whitespace-nowrap">
+                        <Button size="sm" variant="ghost" icon={Pencil} onClick={() => openEditModal(drive)} aria-label={`Edit ${drive.companyName} drive`}>
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={Trash2}
+                          onClick={() => setDeleting(drive)}
+                          aria-label={`Delete ${drive.companyName} drive`}
+                          className="text-critical-ink hover:bg-critical-soft"
+                        />
                       </td>
                     </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
+
+      {tab === 'candidates' && (
+        <div className="card p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-ink">All candidates</h3>
+              <p className="text-xs text-ink-muted">
+                Every application across drives. Move candidates between rounds, record test scores and decisions.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Search candidates"
+                  placeholder="Name, roll no., email…"
+                  value={candidateSearch}
+                  onChange={(e) => setCandidateSearch(e.target.value)}
+                  className="input h-9 w-56 pl-9 text-xs"
+                />
+              </div>
+              <select aria-label="Filter by drive" value={candidateDrive} onChange={(e) => setCandidateDrive(e.target.value)} className="input h-9 w-48 text-xs">
+                <option value="ALL">All drives</option>
+                {drives.map((d) => (
+                  <option key={d.id} value={d.id}>{d.companyName} · {d.role}</option>
+                ))}
+              </select>
+              <select aria-label="Filter by status" value={candidateStatus} onChange={(e) => setCandidateStatus(e.target.value)} className="input h-9 w-36 text-xs">
+                <option value="ALL">All statuses</option>
+                {APPLICATION_STATUSES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {candidates === null ? (
+            <Spinner label="Loading candidates…" />
+          ) : (
+            (() => {
+              const q = candidateSearch.trim().toLowerCase();
+              const rows = candidates.filter((c) => {
+                if (candidateDrive !== 'ALL' && c.driveId !== candidateDrive) return false;
+                if (candidateStatus !== 'ALL' && c.status !== candidateStatus) return false;
+                if (!q) return true;
+                const p = c.student?.placementProfile;
+                return [p?.fullName, p?.rollNumber, c.student?.fullName, c.student?.email, c.drive?.companyName].some((v) =>
+                  v?.toLowerCase().includes(q),
+                );
+              });
+              if (rows.length === 0) return <p className="py-10 text-center text-sm text-ink-muted">No candidates match these filters.</p>;
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-line text-[11px] text-ink-subtle">
+                        <th className="pb-3 pr-3 font-semibold">Candidate</th>
+                        <th className="pb-3 pr-3 font-semibold">Academics</th>
+                        <th className="pb-3 pr-3 font-semibold">Links</th>
+                        <th className="pb-3 pr-3 font-semibold">Applied</th>
+                        <th className="pb-3 font-semibold">Decision</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {rows.map((c) => (
+                        <ApplicantRow
+                          key={c.id}
+                          app={c}
+                          showDrive
+                          rounds={
+                            Array.isArray(c.drive?.selectionProcess) && c.drive.selectionProcess.length
+                              ? c.drive.selectionProcess
+                              : SELECTION_ROUNDS
+                          }
+                          onSave={handleUpdateApplicant}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()
+          )}
+        </div>
+      )}
+
+      {tab === 'profiles' && (
+        <div className="card p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-ink">Student placement profiles</h3>
+              <p className="text-xs text-ink-muted">Check each student's academic record and verify it before they apply.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Search profiles"
+                  placeholder="Name or roll no.…"
+                  value={profileSearch}
+                  onChange={(e) => setProfileSearch(e.target.value)}
+                  className="input h-9 w-56 pl-9 text-xs"
+                />
+              </div>
+              <select aria-label="Filter by branch" value={profileBranch} onChange={(e) => setProfileBranch(e.target.value)} className="input h-9 w-48 text-xs">
+                <option value="ALL">All branches</option>
+                {BRANCHES.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {profiles === null ? (
+            <Spinner label="Loading profiles…" />
+          ) : (
+            (() => {
+              const q = profileSearch.trim().toLowerCase();
+              const rows = profiles.filter((p) => {
+                if (profileBranch !== 'ALL' && (canonicalBranch(p.branch) || p.branch) !== profileBranch) return false;
+                return !q || [p.fullName, p.rollNumber, p.user?.email].some((v) => v?.toLowerCase().includes(q));
+              });
+              if (rows.length === 0) return <p className="py-10 text-center text-sm text-ink-muted">No profiles match these filters.</p>;
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-line text-[11px] text-ink-subtle">
+                        <th className="pb-3 pr-3 font-semibold">Student</th>
+                        <th className="pb-3 pr-3 font-semibold">Branch</th>
+                        <th className="pb-3 pr-3 font-semibold">CGPA</th>
+                        <th className="pb-3 pr-3 font-semibold">10th / 12th</th>
+                        <th className="pb-3 pr-3 font-semibold">Backlogs</th>
+                        <th className="pb-3 pr-3 font-semibold">Batch</th>
+                        <th className="pb-3 pr-3 font-semibold">Resume</th>
+                        <th className="pb-3 text-right font-semibold">Verification</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {rows.map((p) => (
+                        <tr key={p.id} className="align-middle">
+                          <td className="py-3 pr-3">
+                            <div className="font-semibold text-ink">{p.fullName}</div>
+                            <div className="text-[11px] text-ink-subtle">{p.rollNumber || '—'} · {p.user?.email}</div>
+                          </td>
+                          <td className="py-3 pr-3">{p.branch || '—'}</td>
+                          <td className="py-3 pr-3 font-semibold text-ink">{p.cgpa}</td>
+                          <td className="py-3 pr-3">{p.tenthPercentage ?? '—'}% / {p.twelfthPercentage ?? '—'}%</td>
+                          <td className="py-3 pr-3">{p.activeBacklogs ?? 0}</td>
+                          <td className="py-3 pr-3">{p.graduationYear ?? '—'}</td>
+                          <td className="py-3 pr-3">
+                            {p.resumeUrl ? (
+                              <a href={p.resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent-ink hover:underline">
+                                <FileText className="h-3 w-3" /> View
+                              </a>
+                            ) : (
+                              <span className="text-ink-subtle">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Badge tone={p.isVerified ? 'positive' : 'caution'}>{p.isVerified ? 'Verified' : 'Pending'}</Badge>
+                              <Button
+                                size="sm"
+                                variant={p.isVerified ? 'secondary' : 'primary'}
+                                loading={verifying === p.id}
+                                onClick={() => handleVerifyProfile(p, !p.isVerified)}
+                              >
+                                {p.isVerified ? 'Unverify' : 'Verify'}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()
+          )}
+        </div>
+      )}
+
+      {/* CREATE / EDIT DRIVE */}
+      <Modal
+        open={driveModal}
+        onClose={() => !savingDrive && setDriveModal(false)}
+        width="xl"
+        title={editingDrive ? `Edit ${editingDrive.companyName} drive` : 'New placement drive'}
+        description="Students only see eligibility against the criteria you set here."
+      >
+        <form onSubmit={handleSaveDrive} noValidate className="space-y-5">
+          {serverError && <ErrorAlert error={serverError} />}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Company name" required error={formErrors.companyName} htmlFor="pd-company">
+              <input id="pd-company" className="input" value={formDrive.companyName} onChange={set('companyName')} placeholder="e.g. Google" maxLength={200} />
+            </Field>
+            <Field label="Role / designation" required error={formErrors.role} htmlFor="pd-role">
+              <input id="pd-role" className="input" value={formDrive.role} onChange={set('role')} placeholder="e.g. Software Engineer (New Grad)" maxLength={200} />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Field label="Drive type" htmlFor="pd-type">
+              <select id="pd-type" className="input" value={formDrive.driveType} onChange={set('driveType')}>
+                <option value="ON_CAMPUS">On-campus</option>
+                <option value="OFF_CAMPUS">Off-campus</option>
+              </select>
+            </Field>
+            <Field label="Status" htmlFor="pd-status" hint="Only Active/Upcoming drives accept applications">
+              <select id="pd-status" className="input" value={formDrive.status} onChange={set('status')}>
+                {DRIVE_STATUSES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="CTC (LPA)" error={formErrors.ctcLpa} htmlFor="pd-ctc">
+              <input id="pd-ctc" type="number" step="0.1" min="0" className="input" value={formDrive.ctcLpa} onChange={set('ctcLpa')} placeholder="e.g. 18.5" />
+            </Field>
+            <Field label="Location" htmlFor="pd-loc">
+              <input id="pd-loc" className="input" value={formDrive.location} onChange={set('location')} placeholder="e.g. Bengaluru / Hybrid" maxLength={200} />
+            </Field>
+          </div>
+
+          <Field label="Selection rounds" hint="Comma separated, in order" htmlFor="pd-rounds">
+            <input id="pd-rounds" className="input" value={formDrive.selectionProcess} onChange={set('selectionProcess')} placeholder="Resume Screening, Online Assessment, Technical Interview, HR Round" maxLength={600} />
+          </Field>
+
+          <fieldset className="rounded-xl border border-line bg-canvas p-4">
+            <legend className="px-1 text-xs font-bold uppercase tracking-wider text-ink-muted">Eligibility criteria</legend>
+            <div className="grid gap-4 sm:grid-cols-5">
+              <Field label="Min CGPA" error={formErrors.eligibilityCgpa} htmlFor="pd-cgpa">
+                <input id="pd-cgpa" type="number" step="0.01" min="0" max="10" className="input" value={formDrive.eligibilityCgpa} onChange={set('eligibilityCgpa')} placeholder="0 = any" />
+              </Field>
+              <Field label="Max backlogs" error={formErrors.maxBacklogs} htmlFor="pd-backlogs">
+                <input id="pd-backlogs" type="number" min="0" step="1" className="input" value={formDrive.maxBacklogs} onChange={set('maxBacklogs')} />
+              </Field>
+              <Field label="Min 10th %" error={formErrors.minTenthPercent} htmlFor="pd-tenth">
+                <input id="pd-tenth" type="number" min="0" max="100" step="0.1" className="input" value={formDrive.minTenthPercent} onChange={set('minTenthPercent')} placeholder="any" />
+              </Field>
+              <Field label="Min 12th %" error={formErrors.minTwelfthPercent} htmlFor="pd-twelfth">
+                <input id="pd-twelfth" type="number" min="0" max="100" step="0.1" className="input" value={formDrive.minTwelfthPercent} onChange={set('minTwelfthPercent')} placeholder="any" />
+              </Field>
+              <Field label="Batch year" error={formErrors.batchYear} htmlFor="pd-batch">
+                <input id="pd-batch" type="number" min="2000" max="2040" step="1" className="input" value={formDrive.batchYear} onChange={set('batchYear')} placeholder="any" />
+              </Field>
+            </div>
+            <div className="mt-4">
+              <span className="label">Eligible branches</span>
+              <BranchChips
+                value={formDrive.eligibleBranches}
+                onChange={(eligibleBranches) => setFormDrive((f) => ({ ...f, eligibleBranches }))}
+              />
+            </div>
+          </fieldset>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Application deadline" required error={formErrors.deadline} hint="Applications close at 11:59 pm on this day" htmlFor="pd-deadline">
+              <input id="pd-deadline" type="date" className="input" value={formDrive.deadline} onChange={set('deadline')} />
+            </Field>
+            <Field label="Drive / interview date" error={formErrors.driveDate} htmlFor="pd-drivedate">
+              <input id="pd-drivedate" type="date" className="input" value={formDrive.driveDate} onChange={set('driveDate')} min={formDrive.deadline || undefined} />
+            </Field>
+          </div>
+
+          <Field label="Job description & selection process" htmlFor="pd-desc">
+            <textarea id="pd-desc" rows={4} className="input" value={formDrive.description} onChange={set('description')} maxLength={5000} placeholder="Responsibilities, skills expected, selection rounds…" />
+          </Field>
+
+          <div className="flex justify-end gap-2 border-t border-line pt-4">
+            <Button variant="ghost" onClick={() => setDriveModal(false)} disabled={savingDrive}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" loading={savingDrive}>
+              {editingDrive ? 'Save changes' : 'Publish drive'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* DELETE CONFIRMATION */}
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        loading={deleteBusy}
+        title={deleting ? `Delete ${deleting.companyName} drive?` : 'Delete drive?'}
+        description={
+          deleting
+            ? `"${deleting.role}" and its ${deleting.applicantCount || 0} application${deleting.applicantCount === 1 ? '' : 's'} will be permanently removed.`
+            : ''
+        }
+        confirmLabel="Delete drive"
+      />
+
+      {/* APPLICANTS */}
+      <Modal
+        open={Boolean(viewingDrive)}
+        onClose={() => setViewingDrive(null)}
+        width="xl"
+        title={viewingDrive ? `Applicants · ${viewingDrive.companyName}` : 'Applicants'}
+        description={viewingDrive ? `${viewingDrive.role} · ${applicants.length} applicant${applicants.length === 1 ? '' : 's'}` : undefined}
+      >
+        <div className="space-y-4">
+          {applicants.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {['ALL', ...APPLICATION_STATUSES].map((s) => {
+                const count = s === 'ALL' ? applicants.length : applicants.filter((a) => a.status === s).length;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setApplicantFilter(s)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                      applicantFilter === s ? 'bg-accent text-accent-on' : 'bg-surface-sunken text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    {s === 'ALL' ? 'All' : s} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {loadingApplicants ? (
+            <Spinner label="Loading applicants…" />
+          ) : applicants.length === 0 ? (
+            <EmptyState title="No applicants yet" description="No student has applied to this drive yet." />
+          ) : visibleApplicants.length === 0 ? (
+            <p className="py-6 text-center text-sm text-ink-muted">No applicants with this status.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-line text-[10px] uppercase tracking-wider text-ink-subtle">
+                    <th className="pb-2.5 pr-3 font-semibold">Student</th>
+                    <th className="pb-2.5 pr-3 font-semibold">Academics</th>
+                    <th className="pb-2.5 pr-3 font-semibold">Links</th>
+                    <th className="pb-2.5 pr-3 font-semibold">Applied</th>
+                    <th className="pb-2.5 pr-3 font-semibold">Stage & notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {visibleApplicants.map((app) => (
+                    <ApplicantRow
+                      key={app.id}
+                      app={app}
+                      rounds={
+                        Array.isArray(viewingDrive?.selectionProcess) && viewingDrive.selectionProcess.length
+                          ? viewingDrive.selectionProcess
+                          : SELECTION_ROUNDS
+                      }
+                      onSave={handleUpdateApplicant}
+                    />
                   ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-      )}
-
-      {/* CREATE / EDIT DRIVE MODAL */}
-      {driveModal && (
-        <Modal
-          open={driveModal}
-          onClose={() => setDriveModal(false)}
-          title={editingDrive ? `Edit ${editingDrive.companyName} Drive` : 'New Placement Drive'}
-        >
-          <form onSubmit={handleSaveDrive} className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Company Name" required>
-                <input
-                  type="text"
-                  required
-                  value={formDrive.companyName}
-                  onChange={(e) => setFormDrive({ ...formDrive, companyName: e.target.value })}
-                  placeholder="e.g. Google, Microsoft, Amazon"
-                  className="input input-sm w-full"
-                />
-              </Field>
-
-              <Field label="Job Role / Designation" required>
-                <input
-                  type="text"
-                  required
-                  value={formDrive.role}
-                  onChange={(e) => setFormDrive({ ...formDrive, role: e.target.value })}
-                  placeholder="e.g. Software Engineer Intern"
-                  className="input input-sm w-full"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Drive Type">
-                <select
-                  value={formDrive.driveType}
-                  onChange={(e) => setFormDrive({ ...formDrive, driveType: e.target.value })}
-                  className="input input-sm w-full"
-                >
-                  <option value="ON_CAMPUS">ON_CAMPUS</option>
-                  <option value="OFF_CAMPUS">OFF_CAMPUS</option>
-                </select>
-              </Field>
-
-              <Field label="Drive Status">
-                <select
-                  value={formDrive.status}
-                  onChange={(e) => setFormDrive({ ...formDrive, status: e.target.value })}
-                  className="input input-sm w-full"
-                >
-                  <option value="UPCOMING">UPCOMING</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="COMPLETED">COMPLETED</option>
-                  <option value="CANCELLED">CANCELLED</option>
-                </select>
-              </Field>
-
-              <Field label="Package CTC (LPA)">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formDrive.ctcLpa}
-                  onChange={(e) => setFormDrive({ ...formDrive, ctcLpa: e.target.value })}
-                  placeholder="e.g. 18.5"
-                  className="input input-sm w-full"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-4 gap-3">
-              <Field label="Min CGPA" required>
-                <input
-                  type="number"
-                  step="0.1"
-                  required
-                  value={formDrive.eligibilityCgpa}
-                  onChange={(e) => setFormDrive({ ...formDrive, eligibilityCgpa: e.target.value })}
-                  className="input input-sm w-full"
-                />
-              </Field>
-
-              <Field label="Max Backlogs">
-                <input
-                  type="number"
-                  value={formDrive.maxBacklogs}
-                  onChange={(e) => setFormDrive({ ...formDrive, maxBacklogs: e.target.value })}
-                  className="input input-sm w-full"
-                />
-              </Field>
-
-              <Field label="Min 10th %">
-                <input
-                  type="number"
-                  value={formDrive.minTenthPercent}
-                  onChange={(e) => setFormDrive({ ...formDrive, minTenthPercent: e.target.value })}
-                  placeholder="70"
-                  className="input input-sm w-full"
-                />
-              </Field>
-
-              <Field label="Min 12th %">
-                <input
-                  type="number"
-                  value={formDrive.minTwelfthPercent}
-                  onChange={(e) => setFormDrive({ ...formDrive, minTwelfthPercent: e.target.value })}
-                  placeholder="70"
-                  className="input input-sm w-full"
-                />
-              </Field>
-            </div>
-
-            <Field label="Eligible Branches (comma-separated)">
-              <input
-                type="text"
-                value={formDrive.eligibleBranches}
-                onChange={(e) => setFormDrive({ ...formDrive, eligibleBranches: e.target.value })}
-                placeholder="Computer Science, Information Technology, Electronics"
-                className="input input-sm w-full text-xs"
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Location">
-                <input
-                  type="text"
-                  value={formDrive.location}
-                  onChange={(e) => setFormDrive({ ...formDrive, location: e.target.value })}
-                  placeholder="e.g. Bangalore / Hybrid"
-                  className="input input-sm w-full"
-                />
-              </Field>
-
-              <Field label="Application Deadline" required>
-                <input
-                  type="date"
-                  required
-                  value={formDrive.deadline}
-                  onChange={(e) => setFormDrive({ ...formDrive, deadline: e.target.value })}
-                  className="input input-sm w-full"
-                />
-              </Field>
-            </div>
-
-            <Field label="Job Description & Criteria Details">
-              <textarea
-                rows={3}
-                value={formDrive.description}
-                onChange={(e) => setFormDrive({ ...formDrive, description: e.target.value })}
-                placeholder="Role requirements, technical skills expected, selection stages..."
-                className="input input-sm w-full text-xs"
-              />
-            </Field>
-
-            <div className="pt-4 border-t border-line flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDriveModal(false)}
-                className="btn btn-sm btn-ghost"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={savingDrive}
-                className="btn btn-sm btn-primary"
-              >
-                {savingDrive ? 'Saving...' : editingDrive ? 'Update Drive' : 'Publish Drive'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* APPLICANTS REVIEW MODAL */}
-      {viewingApplicantsDrive && (
-        <Modal
-          open={Boolean(viewingApplicantsDrive)}
-          onClose={() => setViewingApplicantsDrive(null)}
-          title={`Drive Applicants: ${viewingApplicantsDrive.companyName} (${viewingApplicantsDrive.role})`}
-        >
-          <div className="space-y-4">
-            {loadingApplicants ? (
-              <Spinner label="Loading applicants..." />
-            ) : applicants.length === 0 ? (
-              <EmptyState
-                title="No applicants yet"
-                description="No registered students have submitted applications for this recruitment drive yet."
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="border-b border-line text-ink-subtle uppercase tracking-wider text-[10px]">
-                      <th className="pb-2.5 pr-3 font-semibold">Student Name & Roll</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Academic Record</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Current Round</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Proctor Status</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Status</th>
-                      <th className="pb-2.5 pr-3 font-semibold">Stage Decision</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {applicants.map((app) => (
-                      <tr key={app.id} className="hover:bg-canvas/50">
-                        <td className="py-3 pr-3">
-                          <strong className="text-ink block font-semibold">
-                            {app.student?.placementProfile?.fullName || app.student?.fullName || app.student?.username}
-                          </strong>
-                          <span className="text-[11px] text-ink-subtle">
-                            {app.student?.placementProfile?.rollNumber || app.student?.email}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-3 space-y-0.5">
-                          <div className="text-ink font-medium">{app.student?.placementProfile?.branch || 'N/A'}</div>
-                          <div className="text-positive-ink font-bold">
-                            CGPA: {app.student?.placementProfile?.cgpa ?? '—'}
-                          </div>
-                          <div className="text-ink-subtle text-[10px]">
-                            Backlogs: {app.student?.placementProfile?.activeBacklogs ?? 0}
-                          </div>
-                        </td>
-                        <td className="py-3 pr-3">
-                          <span className="font-semibold text-ink">
-                            {app.currentRound || 'Resume Screening'}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-3">
-                          <Badge
-                            tone={
-                              app.proctorStatus === 'CLEARED'
-                                ? 'positive'
-                                : app.proctorStatus === 'FLAGGED'
-                                ? 'warning'
-                                : app.proctorStatus === 'DISQUALIFIED'
-                                ? 'critical'
-                                : 'neutral'
-                            }
-                          >
-                            {app.proctorStatus || 'NOT_STARTED'}
-                          </Badge>
-                        </td>
-                        <td className="py-3 pr-3">
-                          <Badge
-                            tone={
-                              app.status === 'SELECTED'
-                                ? 'positive'
-                                : app.status === 'SHORTLISTED'
-                                ? 'blue'
-                                : app.status === 'REJECTED'
-                                ? 'critical'
-                                : 'neutral'
-                            }
-                          >
-                            {app.status}
-                          </Badge>
-                        </td>
-                        <td className="py-3 pr-3">
-                          <select
-                            value={app.status}
-                            onChange={(e) =>
-                              handleUpdateApplicantStatus(app.id, e.target.value, app.currentRound, app.notes)
-                            }
-                            className="input input-xs text-[11px] bg-canvas"
-                          >
-                            <option value="APPLIED">APPLIED</option>
-                            <option value="SHORTLISTED">SHORTLISTED</option>
-                            <option value="INTERVIEWED">INTERVIEWED</option>
-                            <option value="SELECTED">SELECTED</option>
-                            <option value="REJECTED">REJECTED</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-line flex justify-end">
-              <button
-                type="button"
-                onClick={() => setViewingApplicantsDrive(null)}
-                className="btn btn-sm btn-secondary"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      </Modal>
     </div>
   );
 }
